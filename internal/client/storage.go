@@ -453,11 +453,94 @@ func (s *Storage) FindByName(name string) (p *Persistent, ok bool) {
 	return nil, false
 }
 
+// FindParams represents the parameters for searching a client.
+//
+// TODO(s.chzhen):  Add a UID field.
+//
+// TODO(s.chzhen): !! Add a CIDR field to fix the client search HTTP API.
+type FindParams struct {
+	// ClientID is a unique identifier for the client used in DoH, DoT, and DoQ
+	// DNS queries.
+	//
+	// TODO(s.chzhen): !! Add a ClientID type.
+	ClientID string
+
+	// RemoteIP is the IP address used as a client search parameter.
+	RemoteIP netip.Addr
+
+	// MAC is the physical hardware address used as a client search parameter.
+	MAC net.HardwareAddr
+}
+
+// ParseFindParams parses a string representation of the search parameter into
+// typed search parameters.
+func ParseFindParams(id string) (params *FindParams) {
+	params = &FindParams{
+		ClientID: id,
+	}
+
+	addr, err := netip.ParseAddr(id)
+	if err == nil {
+		params.RemoteIP = addr
+	}
+
+	mac, err := net.ParseMAC(id)
+	if err == nil {
+		params.MAC = mac
+	}
+
+	return params
+}
+
+// FindParams finds persistent client using the provided search parameters and
+// returns a shallow copy of it.  params must not be nil.
+func (s *Storage) FindParams(params *FindParams) (p *Persistent, ok bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if params.ClientID != "" {
+		p, ok = s.index.findByClientID(string(params.ClientID))
+	}
+
+	if ok {
+		return p.ShallowClone(), true
+	}
+
+	addr := params.RemoteIP
+	if addr.IsValid() {
+		p, ok = s.index.findByIP(addr)
+		if ok {
+			return p.ShallowClone(), true
+		}
+
+		foundMAC := s.dhcp.MACByIP(addr)
+		if foundMAC != nil {
+			p, ok = s.index.findByMAC(foundMAC)
+		}
+	}
+
+	if ok {
+		return p.ShallowClone(), true
+	}
+
+	if params.MAC != nil {
+		p, ok = s.index.findByMAC(params.MAC)
+	}
+
+	if ok {
+		return p.ShallowClone(), true
+	}
+
+	return nil, false
+}
+
 // Find finds persistent client by string representation of the ClientID, IP
 // address, or MAC.  And returns its shallow copy.
 //
 // TODO(s.chzhen):  Accept ClientIDData structure instead, which will contain
 // the parsed IP address, if any.
+//
+// TODO(s.chzhen): !! Replace with [Storage.FindParams].
 func (s *Storage) Find(id string) (p *Persistent, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

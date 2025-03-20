@@ -519,7 +519,7 @@ func TestClientsDHCP(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		prsCli, ok := storage.Find(prsCliIP.String())
+		prsCli, ok := storage.FindParams(client.ParseFindParams(prsCliIP.String()))
 		require.True(t, ok)
 
 		assert.Equal(t, prsCliName, prsCli.Name)
@@ -950,7 +950,7 @@ func TestStorage_Find(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, id := range tc.ids {
-				c, ok := s.Find(id)
+				c, ok := s.FindParams(client.ParseFindParams(id))
 				require.True(t, ok)
 
 				assert.Equal(t, tc.want, c)
@@ -959,7 +959,7 @@ func TestStorage_Find(t *testing.T) {
 	}
 
 	t.Run("not_found", func(t *testing.T) {
-		_, ok := s.Find(cliIPNone)
+		_, ok := s.FindParams(client.ParseFindParams(cliIPNone))
 		assert.False(t, ok)
 	})
 }
