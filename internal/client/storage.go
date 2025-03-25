@@ -456,17 +456,16 @@ func (s *Storage) FindByName(name string) (p *Persistent, ok bool) {
 // FindParams represents the parameters for searching a client.
 //
 // TODO(s.chzhen):  Add a UID field.
-//
-// TODO(s.chzhen): !! Add a CIDR field to fix the client search HTTP API.
 type FindParams struct {
 	// ClientID is a unique identifier for the client used in DoH, DoT, and DoQ
 	// DNS queries.
-	//
-	// TODO(s.chzhen): !! Add a ClientID type.
-	ClientID string
+	ClientID ClientID
 
 	// RemoteIP is the IP address used as a client search parameter.
 	RemoteIP netip.Addr
+
+	// Subnet is the CIDR used as a client search parameter.
+	Subnet netip.Prefix
 
 	// MAC is the physical hardware address used as a client search parameter.
 	MAC net.HardwareAddr
@@ -475,48 +474,58 @@ type FindParams struct {
 // ParseFindParams parses a string representation of the search parameter into
 // typed search parameters.
 func ParseFindParams(id string) (params *FindParams) {
-	params = &FindParams{
-		ClientID: id,
-	}
+	params = &FindParams{}
 
+	isClientID := true
 	addr, err := netip.ParseAddr(id)
 	if err == nil {
 		params.RemoteIP = addr
+		isClientID = false
+	}
+
+	subnet, err := netip.ParsePrefix(id)
+	if err == nil {
+		params.Subnet = subnet
+		isClientID = false
 	}
 
 	mac, err := net.ParseMAC(id)
 	if err == nil {
 		params.MAC = mac
+		isClientID = false
+	}
+
+	if isClientID {
+		params.ClientID = ClientID(id)
 	}
 
 	return params
 }
 
-// FindParams finds persistent client using the provided search parameters and
-// returns a shallow copy of it.  params must not be nil.
+// FindParams represents the parameters for searching a client.  At least one
+// field must be non-empty.
 func (s *Storage) FindParams(params *FindParams) (p *Persistent, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if params.ClientID != "" {
-		p, ok = s.index.findByClientID(string(params.ClientID))
+		p, ok = s.index.findByClientID(params.ClientID)
 	}
 
 	if ok {
 		return p.ShallowClone(), true
 	}
 
-	addr := params.RemoteIP
-	if addr.IsValid() {
-		p, ok = s.index.findByIP(addr)
-		if ok {
-			return p.ShallowClone(), true
-		}
+	if params.RemoteIP != (netip.Addr{}) {
+		p, ok = s.findByIP(params.RemoteIP)
+	}
 
-		foundMAC := s.dhcp.MACByIP(addr)
-		if foundMAC != nil {
-			p, ok = s.index.findByMAC(foundMAC)
-		}
+	if ok {
+		return p.ShallowClone(), true
+	}
+
+	if params.Subnet != (netip.Prefix{}) {
+		p, ok = s.index.findByCIDR(params.Subnet)
 	}
 
 	if ok {
@@ -534,11 +543,24 @@ func (s *Storage) FindParams(params *FindParams) (p *Persistent, ok bool) {
 	return nil, false
 }
 
+// findByIP finds persistent client by IP address.  s.mu is expected to be
+// locked.
+func (s *Storage) findByIP(addr netip.Addr) (p *Persistent, ok bool) {
+	p, ok = s.index.findByIP(addr)
+	if ok {
+		return p, true
+	}
+
+	foundMAC := s.dhcp.MACByIP(addr)
+	if foundMAC != nil {
+		return s.index.findByMAC(foundMAC)
+	}
+
+	return nil, false
+}
+
 // Find finds persistent client by string representation of the ClientID, IP
 // address, or MAC.  And returns its shallow copy.
-//
-// TODO(s.chzhen):  Accept ClientIDData structure instead, which will contain
-// the parsed IP address, if any.
 //
 // TODO(s.chzhen): !! Replace with [Storage.FindParams].
 func (s *Storage) Find(id string) (p *Persistent, ok bool) {
@@ -726,7 +748,7 @@ func (s *Storage) CustomUpstreamConfig(
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	c, ok := s.index.findByClientID(id)
+	c, ok := s.index.findByClientID(ClientID(id))
 	if !ok {
 		c, ok = s.index.findByIP(addr)
 	}
@@ -760,7 +782,7 @@ func (s *Storage) ClearUpstreamCache() {
 // ClientID or client IP address, and applies it to the filtering settings.
 // setts must not be nil.
 func (s *Storage) ApplyClientFiltering(id string, addr netip.Addr, setts *filtering.Settings) {
-	c, ok := s.index.findByClientID(id)
+	c, ok := s.index.findByClientID(ClientID(id))
 	if !ok {
 		c, ok = s.index.findByIP(addr)
 	}

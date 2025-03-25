@@ -63,7 +63,7 @@ func TestClientIndex_Find(t *testing.T) {
 
 		clientWithID = &Persistent{
 			Name:      "client_with_id",
-			ClientIDs: []string{cliID},
+			ClientIDs: []ClientID{cliID},
 		}
 
 		clientLinkLocal = &Persistent{
@@ -144,7 +144,7 @@ func TestClientIndex_Clashes(t *testing.T) {
 		MACs: []net.HardwareAddr{mustParseMAC(cliMAC)},
 	}, {
 		Name:      "client_with_id",
-		ClientIDs: []string{cliID},
+		ClientIDs: []ClientID{cliID},
 	}}
 
 	ci := newIDIndex(clients)
@@ -302,19 +302,19 @@ func TestIndex_FindByIPWithoutZone(t *testing.T) {
 func TestClientIndex_RangeByName(t *testing.T) {
 	sortedClients := []*Persistent{{
 		Name:      "clientA",
-		ClientIDs: []string{"A"},
+		ClientIDs: []ClientID{"A"},
 	}, {
 		Name:      "clientB",
-		ClientIDs: []string{"B"},
+		ClientIDs: []ClientID{"B"},
 	}, {
 		Name:      "clientC",
-		ClientIDs: []string{"C"},
+		ClientIDs: []ClientID{"C"},
 	}, {
 		Name:      "clientD",
-		ClientIDs: []string{"D"},
+		ClientIDs: []ClientID{"D"},
 	}, {
 		Name:      "clientE",
-		ClientIDs: []string{"E"},
+		ClientIDs: []ClientID{"E"},
 	}}
 
 	testCases := []struct {

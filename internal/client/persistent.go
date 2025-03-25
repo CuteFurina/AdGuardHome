@@ -90,7 +90,7 @@ type Persistent struct {
 
 	// ClientIDs identifying the client.  The client must have at least one ID
 	// (IP, subnet, MAC, or ClientID).
-	ClientIDs []string
+	ClientIDs []ClientID
 
 	// UID is the unique identifier of the persistent client.
 	UID UID
@@ -237,7 +237,7 @@ func (c *Persistent) setID(id string) (err error) {
 		return err
 	}
 
-	c.ClientIDs = append(c.ClientIDs, strings.ToLower(id))
+	c.ClientIDs = append(c.ClientIDs, ClientID(strings.ToLower(id)))
 
 	return nil
 }
@@ -272,7 +272,11 @@ func (c *Persistent) IDs() (ids []string) {
 		ids = append(ids, mac.String())
 	}
 
-	return append(ids, c.ClientIDs...)
+	for _, cid := range c.ClientIDs {
+		ids = append(ids, string(cid))
+	}
+
+	return ids
 }
 
 // IDsLen returns a length of ClientIDs.

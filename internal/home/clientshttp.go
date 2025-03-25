@@ -447,7 +447,7 @@ func (clients *clientsContainer) handleFindClient(w http.ResponseWriter, r *http
 // client's storage or access settings.  cj is guaranteed to be non-nil.
 func (clients *clientsContainer) findClient(idStr string) (cj *clientJSON) {
 	ip, _ := netip.ParseAddr(idStr)
-	c, ok := clients.storage.Find(idStr)
+	c, ok := clients.storage.FindParams(client.ParseFindParams(idStr))
 	if !ok {
 		return clients.findRuntime(ip, idStr)
 	}

@@ -693,7 +693,7 @@ func TestStorage_Add(t *testing.T) {
 		Name:      existingName,
 		IPs:       []netip.Addr{existingIP},
 		Subnets:   []netip.Prefix{existingSubnet},
-		ClientIDs: []string{existingClientID},
+		ClientIDs: []client.ClientID{existingClientID},
 		UID:       existingClientUID,
 	}
 
@@ -761,7 +761,7 @@ func TestStorage_Add(t *testing.T) {
 		name: "duplicate_client_id",
 		cli: &client.Persistent{
 			Name:      "duplicate_client_id",
-			ClientIDs: []string{existingClientID},
+			ClientIDs: []client.ClientID{existingClientID},
 			UID:       client.MustNewUID(),
 		},
 		wantErrMsg: `adding client: another client "existing_name" ` +
@@ -903,7 +903,7 @@ func TestStorage_Find(t *testing.T) {
 
 		clientWithID = &client.Persistent{
 			Name:      "client_with_id",
-			ClientIDs: []string{cliID},
+			ClientIDs: []client.ClientID{cliID},
 		}
 
 		clientLinkLocal = &client.Persistent{
@@ -1162,7 +1162,7 @@ func TestStorage_Update(t *testing.T) {
 		Name:      obstructingName,
 		IPs:       []netip.Addr{obstructingIP},
 		Subnets:   []netip.Prefix{obstructingSubnet},
-		ClientIDs: []string{obstructingClientID},
+		ClientIDs: []client.ClientID{obstructingClientID},
 	}
 
 	clientToUpdate := &client.Persistent{
@@ -1211,7 +1211,7 @@ func TestStorage_Update(t *testing.T) {
 		name: "duplicate_client_id",
 		cli: &client.Persistent{
 			Name:      "duplicate_client_id",
-			ClientIDs: []string{obstructingClientID},
+			ClientIDs: []client.ClientID{obstructingClientID},
 			UID:       client.MustNewUID(),
 		},
 		wantErrMsg: `updating client: another client "obstructing_name" ` +
@@ -1238,19 +1238,19 @@ func TestStorage_Update(t *testing.T) {
 func TestStorage_RangeByName(t *testing.T) {
 	sortedClients := []*client.Persistent{{
 		Name:      "clientA",
-		ClientIDs: []string{"A"},
+		ClientIDs: []client.ClientID{"A"},
 	}, {
 		Name:      "clientB",
-		ClientIDs: []string{"B"},
+		ClientIDs: []client.ClientID{"B"},
 	}, {
 		Name:      "clientC",
-		ClientIDs: []string{"C"},
+		ClientIDs: []client.ClientID{"C"},
 	}, {
 		Name:      "clientD",
-		ClientIDs: []string{"D"},
+		ClientIDs: []client.ClientID{"D"},
 	}, {
 		Name:      "clientE",
-		ClientIDs: []string{"E"},
+		ClientIDs: []client.ClientID{"E"},
 	}}
 
 	testCases := []struct {
@@ -1306,7 +1306,7 @@ func TestStorage_CustomUpstreamConfig(t *testing.T) {
 	existingClient := &client.Persistent{
 		Name:      existingName,
 		IPs:       []netip.Addr{existingIP},
-		ClientIDs: []string{existingClientID},
+		ClientIDs: []client.ClientID{existingClientID},
 		UID:       existingClientUID,
 		Upstreams: []string{"192.0.2.0"},
 	}
