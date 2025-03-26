@@ -440,22 +440,8 @@ func (s *Storage) Add(ctx context.Context, p *Persistent) (err error) {
 	return nil
 }
 
-// FindByName finds persistent client by name.  And returns its shallow copy.
-func (s *Storage) FindByName(name string) (p *Persistent, ok bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	p, ok = s.index.findByName(name)
-	if ok {
-		return p.ShallowClone(), ok
-	}
-
-	return nil, false
-}
-
-// FindParams represents the parameters for searching a client.
-//
-// TODO(s.chzhen):  Add a UID field.
+// FindParams represents the parameters for searching a client.  At least one
+// field must be non-empty.
 type FindParams struct {
 	// ClientID is a unique identifier for the client used in DoH, DoT, and DoQ
 	// DNS queries.
@@ -469,15 +455,24 @@ type FindParams struct {
 
 	// MAC is the physical hardware address used as a client search parameter.
 	MAC net.HardwareAddr
+
+	// UID is the unique ID of persistent client used as a search parameter.
+	//
+	// TODO(s.chzhen):  Use this.
+	UID UID
 }
 
 // ParseFindParams parses a string representation of the search parameter into
 // typed search parameters.
+//
+// TODO(s.chzhen):  Add support for UID.
 func ParseFindParams(id string) (params *FindParams) {
 	params = &FindParams{}
 
 	isClientID := true
 	addr, err := netip.ParseAddr(id)
+	// Even if id can be parsed as an IP address, it may be a MAC address.  So
+	// do not return prematurely, continue parsing.
 	if err == nil {
 		params.RemoteIP = addr
 		isClientID = false
@@ -502,16 +497,15 @@ func ParseFindParams(id string) (params *FindParams) {
 	return params
 }
 
-// FindParams represents the parameters for searching a client.  At least one
+// Find represents the parameters for searching a client.  At least one
 // field must be non-empty.
-func (s *Storage) FindParams(params *FindParams) (p *Persistent, ok bool) {
+func (s *Storage) Find(params *FindParams) (p *Persistent, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if params.ClientID != "" {
 		p, ok = s.index.findByClientID(params.ClientID)
 	}
-
 	if ok {
 		return p.ShallowClone(), true
 	}
@@ -519,7 +513,6 @@ func (s *Storage) FindParams(params *FindParams) (p *Persistent, ok bool) {
 	if params.RemoteIP != (netip.Addr{}) {
 		p, ok = s.findByIP(params.RemoteIP)
 	}
-
 	if ok {
 		return p.ShallowClone(), true
 	}
@@ -527,7 +520,6 @@ func (s *Storage) FindParams(params *FindParams) (p *Persistent, ok bool) {
 	if params.Subnet != (netip.Prefix{}) {
 		p, ok = s.index.findByCIDR(params.Subnet)
 	}
-
 	if ok {
 		return p.ShallowClone(), true
 	}
@@ -535,7 +527,6 @@ func (s *Storage) FindParams(params *FindParams) (p *Persistent, ok bool) {
 	if params.MAC != nil {
 		p, ok = s.index.findByMAC(params.MAC)
 	}
-
 	if ok {
 		return p.ShallowClone(), true
 	}
@@ -559,32 +550,6 @@ func (s *Storage) findByIP(addr netip.Addr) (p *Persistent, ok bool) {
 	return nil, false
 }
 
-// Find finds persistent client by string representation of the ClientID, IP
-// address, or MAC.  And returns its shallow copy.
-//
-// TODO(s.chzhen): !! Replace with [Storage.FindParams].
-func (s *Storage) Find(id string) (p *Persistent, ok bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	p, ok = s.index.find(id)
-	if ok {
-		return p.ShallowClone(), ok
-	}
-
-	ip, err := netip.ParseAddr(id)
-	if err != nil {
-		return nil, false
-	}
-
-	foundMAC := s.dhcp.MACByIP(ip)
-	if foundMAC != nil {
-		return s.FindByMAC(foundMAC)
-	}
-
-	return nil, false
-}
-
 // FindLoose is like [Storage.Find] but it also tries to find a persistent
 // client by IP address without zone.  It strips the IPv6 zone index from the
 // stored IP addresses before comparing, because querylog entries don't have it.
@@ -592,6 +557,8 @@ func (s *Storage) Find(id string) (p *Persistent, ok bool) {
 //
 // Note that multiple clients can have the same IP address with different zones.
 // Therefore, the result of this method is indeterminate.
+//
+// TODO(s.chzhen):  Consider accepting [FindParams].
 func (s *Storage) FindLoose(ip netip.Addr, id string) (p *Persistent, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -604,17 +571,6 @@ func (s *Storage) FindLoose(ip netip.Addr, id string) (p *Persistent, ok bool) {
 	p = s.index.findByIPWithoutZone(ip)
 	if p != nil {
 		return p.ShallowClone(), true
-	}
-
-	return nil, false
-}
-
-// FindByMAC finds persistent client by MAC and returns its shallow copy.  s.mu
-// is expected to be locked.
-func (s *Storage) FindByMAC(mac net.HardwareAddr) (p *Persistent, ok bool) {
-	p, ok = s.index.findByMAC(mac)
-	if ok {
-		return p.ShallowClone(), ok
 	}
 
 	return nil, false

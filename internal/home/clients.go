@@ -364,7 +364,7 @@ func (clients *clientsContainer) shouldCountClient(ids []string) (y bool) {
 	defer clients.lock.Unlock()
 
 	for _, id := range ids {
-		client, ok := clients.storage.FindParams(client.ParseFindParams(id))
+		client, ok := clients.storage.Find(client.ParseFindParams(id))
 		if ok {
 			return !client.IgnoreStatistics
 		}

@@ -283,15 +283,13 @@ func (ci *index) findByIP(ip netip.Addr) (c *Persistent, found bool) {
 // identifier.
 func (ci *index) findByCIDR(subnet netip.Prefix) (c *Persistent, ok bool) {
 	var uid UID
-	ci.subnetToUID.Range(func(pref netip.Prefix, id UID) (cont bool) {
+	for pref, id := range ci.subnetToUID.Range {
 		if subnet == pref {
 			uid, ok = id, true
 
-			return false
+			break
 		}
-
-		return true
-	})
+	}
 
 	if ok {
 		return ci.uidToClient[uid], true

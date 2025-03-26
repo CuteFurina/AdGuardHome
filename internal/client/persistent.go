@@ -256,7 +256,7 @@ func ValidateClientID(id string) (err error) {
 	return nil
 }
 
-// IDs returns a list of ClientIDs containing at least one element.
+// IDs returns a list of client identifiers containing at least one element.
 func (c *Persistent) IDs() (ids []string) {
 	ids = make([]string, 0, c.IDsLen())
 
