@@ -349,3 +349,124 @@ func TestClientIndex_RangeByName(t *testing.T) {
 		})
 	}
 }
+
+func TestIndex_FindByName(t *testing.T) {
+	const (
+		cliIP1 = "1.1.1.1"
+		cliIP2 = "2.2.2.2"
+	)
+
+	const (
+		clientExistingName        = "client_existing"
+		clientAnotherExistingName = "client_another_existing"
+		nonExistingClientName     = "client_non_existing"
+	)
+
+	var (
+		clientExisting = &Persistent{
+			Name: clientExistingName,
+			IPs:  []netip.Addr{netip.MustParseAddr(cliIP1)},
+		}
+
+		clientAnotherExisting = &Persistent{
+			Name: clientAnotherExistingName,
+			IPs:  []netip.Addr{netip.MustParseAddr(cliIP2)},
+		}
+	)
+
+	clients := []*Persistent{
+		clientExisting,
+		clientAnotherExisting,
+	}
+	ci := newIDIndex(clients)
+
+	testCases := []struct {
+		want       *Persistent
+		name       string
+		clientName string
+	}{{
+		name:       "existing",
+		clientName: clientExistingName,
+		want:       clientExisting,
+	}, {
+		name:       "another_existing",
+		clientName: clientAnotherExistingName,
+		want:       clientAnotherExisting,
+	}, {
+		name:       "non_existing",
+		clientName: nonExistingClientName,
+		want:       nil,
+	}}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, ok := ci.findByName(tc.clientName)
+			if tc.want == nil {
+				assert.False(t, ok)
+
+				return
+			}
+
+			assert.True(t, ok)
+			assert.Equal(t, tc.want, c)
+		})
+	}
+}
+
+func TestIndex_FindByMAC(t *testing.T) {
+	var (
+		cliMAC               = mustParseMAC("11:11:11:11:11:11")
+		cliAnotherMAC        = mustParseMAC("22:22:22:22:22:22")
+		nonExistingClientMAC = mustParseMAC("33:33:33:33:33:33")
+	)
+
+	var (
+		clientExisting = &Persistent{
+			Name: "client",
+			MACs: []net.HardwareAddr{cliMAC},
+		}
+
+		clientAnotherExisting = &Persistent{
+			Name: "another_client",
+			MACs: []net.HardwareAddr{cliAnotherMAC},
+		}
+	)
+
+	clients := []*Persistent{
+		clientExisting,
+		clientAnotherExisting,
+	}
+	ci := newIDIndex(clients)
+
+	testCases := []struct {
+		want      *Persistent
+		name      string
+		clientMAC net.HardwareAddr
+	}{{
+		name:      "existing",
+		clientMAC: cliMAC,
+		want:      clientExisting,
+	}, {
+		name:      "another_existing",
+		clientMAC: cliAnotherMAC,
+		want:      clientAnotherExisting,
+	}, {
+		name:      "non_existing",
+		clientMAC: nonExistingClientMAC,
+		want:      nil,
+	}}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, ok := ci.findByMAC(tc.clientMAC)
+			if tc.want == nil {
+				assert.False(t, ok)
+
+				return
+			}
+
+			assert.True(t, ok)
+			assert.Equal(t, tc.want, c)
+		})
+	}
+}
