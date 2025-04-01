@@ -1,6 +1,7 @@
 package home
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -450,7 +451,7 @@ func (clients *clientsContainer) findClient(idStr string) (cj *clientJSON) {
 	ip := params.RemoteIP
 	c, ok := clients.storage.Find(params)
 	if !ok {
-		return clients.findRuntime(ip, idStr)
+		return clients.findRuntime(params)
 	}
 
 	cj = clientToJSON(c)
@@ -497,7 +498,9 @@ func (clients *clientsContainer) handleSearchClient(w http.ResponseWriter, r *ht
 // findRuntime looks up the IP in runtime and temporary storages, like
 // /etc/hosts tables, DHCP leases, or blocklists.  cj is guaranteed to be
 // non-nil.
-func (clients *clientsContainer) findRuntime(ip netip.Addr, idStr string) (cj *clientJSON) {
+func (clients *clientsContainer) findRuntime(params *client.FindParams) (cj *clientJSON) {
+	ip := params.RemoteIP
+	idStr := cmp.Or(string(params.ClientID), ip.String())
 	rc := clients.storage.ClientRuntime(ip)
 	if rc == nil {
 		// It is still possible that the IP used to be in the runtime clients

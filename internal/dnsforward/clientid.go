@@ -16,7 +16,7 @@ import (
 
 // ValidateClientID returns an error if id is not a valid ClientID.
 //
-// Keep in sync with [client.ValidateClientID].
+// Keep in sync with [client.validateClientID].
 func ValidateClientID(id string) (err error) {
 	err = netutil.ValidateHostnameLabel(id)
 	if err != nil {

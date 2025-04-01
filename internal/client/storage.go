@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/hostsfile"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
+	"github.com/AdguardTeam/golibs/netutil"
 	"github.com/AdguardTeam/golibs/timeutil"
 )
 
@@ -470,20 +472,27 @@ func ParseFindParams(id string) (params *FindParams) {
 	params = &FindParams{}
 
 	isClientID := true
-	addr, err := netip.ParseAddr(id)
-	// Even if id can be parsed as an IP address, it may be a MAC address.  So
-	// do not return prematurely, continue parsing.
-	if err == nil {
-		params.RemoteIP = addr
-		isClientID = false
+
+	if netutil.IsValidIPString(id) {
+		addr, err := netip.ParseAddr(id)
+		// Even if id can be parsed as an IP address, it may be a MAC address.  So
+		// do not return prematurely, continue parsing.
+		if err == nil {
+			params.RemoteIP = addr
+			isClientID = false
+		}
 	}
 
-	subnet, err := netip.ParsePrefix(id)
-	if err == nil {
-		params.Subnet = subnet
-		isClientID = false
+	if isValidIPPrefixString(id) {
+		subnet, err := netip.ParsePrefix(id)
+		if err == nil {
+			params.Subnet = subnet
+			isClientID = false
+		}
 	}
 
+	// TODO(s.chzhen):  Add IsValidHardwareAddr check before parsing to reduce
+	// allocations.
 	mac, err := net.ParseMAC(id)
 	if err == nil {
 		params.MAC = mac
@@ -495,6 +504,34 @@ func ParseFindParams(id string) (params *FindParams) {
 	}
 
 	return params
+}
+
+// isValidIPPrefixString is a best-effort check to determine if s is a valid
+// CIDR before using [netip.ParsePrefix], aimed at reducing allocations.
+func isValidIPPrefixString(s string) (ok bool) {
+	ipStr, bitStr, ok := strings.Cut(s, "/")
+	if !ok {
+		return false
+	}
+
+	if bitStr == "" || len(bitStr) > 3 {
+		return false
+	}
+
+	bits := 0
+	for c := range bitStr {
+		if c < '0' || c > '9' {
+			return false
+		}
+
+		bits = bits*10 + int(c-'0')
+	}
+
+	if bits > 128 {
+		return false
+	}
+
+	return netutil.IsValidIPString(ipStr)
 }
 
 // Find represents the parameters for searching a client.  At least one

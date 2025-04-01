@@ -58,6 +58,7 @@ type clientsContainer struct {
 // BlockedClientChecker checks if a client is blocked by the current access
 // settings.
 type BlockedClientChecker interface {
+	// TODO(s.chzhen):  Accept [client.FindParams].
 	IsBlockedClient(ip netip.Addr, clientID string) (blocked bool, rule string)
 }
 
@@ -359,6 +360,8 @@ func (clients *clientsContainer) clientOrArtificial(
 // shouldCountClient is a wrapper around [clientsContainer.find] to make it a
 // valid client information finder for the statistics.  If no information about
 // the client is found, it returns true.
+//
+// TODO(s.chzhen):  Accept [client.FindParams].
 func (clients *clientsContainer) shouldCountClient(ids []string) (y bool) {
 	clients.lock.Lock()
 	defer clients.lock.Unlock()
