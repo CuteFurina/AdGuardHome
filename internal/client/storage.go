@@ -464,17 +464,22 @@ type FindParams struct {
 	UID UID
 }
 
+// ErrBadIdentifier is returned by [ParseFindParams] when it cannot parse the
+// provided client identifier.
+const ErrBadIdentifier errors.Error = "bad client identifier"
+
 // ParseFindParams parses a string representation of the search parameter into
 // typed search parameters.
 //
 // TODO(s.chzhen):  Add support for UID.
-func ParseFindParams(id string) (params *FindParams) {
+func ParseFindParams(id string) (params *FindParams, err error) {
 	params = &FindParams{}
 
 	isClientID := true
 
 	if netutil.IsValidIPString(id) {
-		addr, err := netip.ParseAddr(id)
+		var addr netip.Addr
+		addr, err = netip.ParseAddr(id)
 		// Even if id can be parsed as an IP address, it may be a MAC address.  So
 		// do not return prematurely, continue parsing.
 		if err == nil {
@@ -484,7 +489,8 @@ func ParseFindParams(id string) (params *FindParams) {
 	}
 
 	if isValidIPPrefixString(id) {
-		subnet, err := netip.ParsePrefix(id)
+		var subnet netip.Prefix
+		subnet, err = netip.ParsePrefix(id)
 		if err == nil {
 			params.Subnet = subnet
 			isClientID = false
@@ -499,11 +505,17 @@ func ParseFindParams(id string) (params *FindParams) {
 		isClientID = false
 	}
 
-	if isClientID {
-		params.ClientID = ClientID(id)
+	if !isClientID {
+		return params, nil
 	}
 
-	return params
+	if !netutil.IsValidHostnameLabel(id) {
+		return nil, ErrBadIdentifier
+	}
+
+	params.ClientID = ClientID(id)
+
+	return params, nil
 }
 
 // isValidIPPrefixString is a best-effort check to determine if s is a valid
@@ -540,35 +552,33 @@ func (s *Storage) Find(params *FindParams) (p *Persistent, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if params.ClientID != "" {
-		p, ok = s.index.findByClientID(params.ClientID)
-	}
-	if ok {
-		return p.ShallowClone(), true
-	}
+	clientID := params.ClientID != ""
+	remoteIP := params.RemoteIP != (netip.Addr{})
+	subnet := params.Subnet != (netip.Prefix{})
+	mac := params.MAC != nil
 
-	if params.RemoteIP != (netip.Addr{}) {
-		p, ok = s.findByIP(params.RemoteIP)
-	}
-	if ok {
-		return p.ShallowClone(), true
-	}
+	for {
+		switch {
+		case clientID:
+			clientID = false
+			p, ok = s.index.findByClientID(params.ClientID)
+		case remoteIP:
+			remoteIP = false
+			p, ok = s.findByIP(params.RemoteIP)
+		case subnet:
+			subnet = false
+			p, ok = s.index.findByCIDR(params.Subnet)
+		case mac:
+			mac = false
+			p, ok = s.index.findByMAC(params.MAC)
+		default:
+			return nil, false
+		}
 
-	if params.Subnet != (netip.Prefix{}) {
-		p, ok = s.index.findByCIDR(params.Subnet)
+		if ok {
+			return p.ShallowClone(), true
+		}
 	}
-	if ok {
-		return p.ShallowClone(), true
-	}
-
-	if params.MAC != nil {
-		p, ok = s.index.findByMAC(params.MAC)
-	}
-	if ok {
-		return p.ShallowClone(), true
-	}
-
-	return nil, false
 }
 
 // findByIP finds persistent client by IP address.  s.mu is expected to be

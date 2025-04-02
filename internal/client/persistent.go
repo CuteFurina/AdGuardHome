@@ -231,7 +231,7 @@ func (c *Persistent) setID(id string) (err error) {
 		return nil
 	}
 
-	err = validateClientID(id)
+	err = ValidateClientID(id)
 	if err != nil {
 		// Don't wrap the error, because it's informative enough as is.
 		return err
@@ -242,11 +242,8 @@ func (c *Persistent) setID(id string) (err error) {
 	return nil
 }
 
-// validateClientID returns an error if id is not a valid ClientID.
-//
-// TODO(s.chzhen):  It's an exact copy of the [dnsforward.ValidateClientID] to
-// avoid the import cycle.  Remove it.
-func validateClientID(id string) (err error) {
+// ValidateClientID returns an error if id is not a valid ClientID.
+func ValidateClientID(id string) (err error) {
 	err = netutil.ValidateHostnameLabel(id)
 	if err != nil {
 		// Replace the domain name label wrapper with our own.

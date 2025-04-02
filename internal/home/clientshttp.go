@@ -447,7 +447,19 @@ func (clients *clientsContainer) handleFindClient(w http.ResponseWriter, r *http
 // findClient returns available information about a client by idStr from the
 // client's storage or access settings.  cj is guaranteed to be non-nil.
 func (clients *clientsContainer) findClient(idStr string) (cj *clientJSON) {
-	params := client.ParseFindParams(idStr)
+	params, err := client.ParseFindParams(idStr)
+	if err != nil {
+		disallowed, rule := clients.clientChecker.IsBlockedClient(netip.Addr{}, idStr)
+		cj = &clientJSON{
+			IDs:            []string{idStr},
+			Disallowed:     &disallowed,
+			DisallowedRule: &rule,
+			WHOIS:          &whois.Info{},
+		}
+
+		return cj
+	}
+
 	ip := params.RemoteIP
 	c, ok := clients.storage.Find(params)
 	if !ok {

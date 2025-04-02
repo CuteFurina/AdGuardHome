@@ -382,33 +382,31 @@ func TestIndex_FindByName(t *testing.T) {
 
 	testCases := []struct {
 		want       *Persistent
+		found      assert.BoolAssertionFunc
 		name       string
 		clientName string
 	}{{
 		name:       "existing",
 		clientName: clientExistingName,
 		want:       clientExisting,
+		found:      assert.True,
 	}, {
 		name:       "another_existing",
 		clientName: clientAnotherExistingName,
 		want:       clientAnotherExisting,
+		found:      assert.True,
 	}, {
 		name:       "non_existing",
 		clientName: nonExistingClientName,
 		want:       nil,
+		found:      assert.False,
 	}}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			c, ok := ci.findByName(tc.clientName)
-			if tc.want == nil {
-				assert.False(t, ok)
-
-				return
-			}
-
-			assert.True(t, ok)
 			assert.Equal(t, tc.want, c)
+			tc.found(t, ok)
 		})
 	}
 }
@@ -440,33 +438,31 @@ func TestIndex_FindByMAC(t *testing.T) {
 
 	testCases := []struct {
 		want      *Persistent
+		found     assert.BoolAssertionFunc
 		name      string
 		clientMAC net.HardwareAddr
 	}{{
 		name:      "existing",
 		clientMAC: cliMAC,
 		want:      clientExisting,
+		found:     assert.True,
 	}, {
 		name:      "another_existing",
 		clientMAC: cliAnotherMAC,
 		want:      clientAnotherExisting,
+		found:     assert.True,
 	}, {
 		name:      "non_existing",
 		clientMAC: nonExistingClientMAC,
 		want:      nil,
+		found:     assert.False,
 	}}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			c, ok := ci.findByMAC(tc.clientMAC)
-			if tc.want == nil {
-				assert.False(t, ok)
-
-				return
-			}
-
-			assert.True(t, ok)
 			assert.Equal(t, tc.want, c)
+			tc.found(t, ok)
 		})
 	}
 }
