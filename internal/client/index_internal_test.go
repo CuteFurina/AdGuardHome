@@ -386,20 +386,20 @@ func TestIndex_FindByName(t *testing.T) {
 		name       string
 		clientName string
 	}{{
-		name:       "existing",
-		clientName: clientExistingName,
 		want:       clientExisting,
 		found:      assert.True,
+		name:       "existing",
+		clientName: clientExistingName,
 	}, {
-		name:       "another_existing",
-		clientName: clientAnotherExistingName,
 		want:       clientAnotherExisting,
 		found:      assert.True,
+		name:       "another_existing",
+		clientName: clientAnotherExistingName,
 	}, {
-		name:       "non_existing",
-		clientName: nonExistingClientName,
 		want:       nil,
 		found:      assert.False,
+		name:       "non_existing",
+		clientName: nonExistingClientName,
 	}}
 
 	for _, tc := range testCases {
@@ -442,20 +442,20 @@ func TestIndex_FindByMAC(t *testing.T) {
 		name      string
 		clientMAC net.HardwareAddr
 	}{{
-		name:      "existing",
-		clientMAC: cliMAC,
 		want:      clientExisting,
 		found:     assert.True,
+		name:      "existing",
+		clientMAC: cliMAC,
 	}, {
-		name:      "another_existing",
-		clientMAC: cliAnotherMAC,
 		want:      clientAnotherExisting,
 		found:     assert.True,
+		name:      "another_existing",
+		clientMAC: cliAnotherMAC,
 	}, {
-		name:      "non_existing",
-		clientMAC: nonExistingClientMAC,
 		want:      nil,
 		found:     assert.False,
+		name:      "non_existing",
+		clientMAC: nonExistingClientMAC,
 	}}
 
 	for _, tc := range testCases {

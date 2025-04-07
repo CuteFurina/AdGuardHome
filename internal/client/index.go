@@ -11,10 +11,6 @@ import (
 	"github.com/AdguardTeam/AdGuardHome/internal/aghalg"
 )
 
-// ClientID is a unique identifier for a persistent client used in
-// DNS-over-HTTPS, DNS-over-TLS, and DNS-over-QUIC queries.
-type ClientID string
-
 // macKey contains MAC as byte array of 6, 8, or 20 bytes.
 type macKey any
 
@@ -280,7 +276,8 @@ func (ci *index) findByIP(ip netip.Addr) (c *Persistent, found bool) {
 }
 
 // findByCIDR searches for a persistent client with the provided subnet as an
-// identifier.
+// identifier.  Note that this function looks for an exact match of subnets,
+// rather than checking if one subnet contains another.
 func (ci *index) findByCIDR(subnet netip.Prefix) (c *Persistent, ok bool) {
 	var uid UID
 	for pref, id := range ci.subnetToUID.Range {

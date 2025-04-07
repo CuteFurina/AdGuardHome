@@ -270,7 +270,7 @@ func (clients *clientsContainer) forConfig() (objs []*clientObject) {
 
 			BlockedServices: cli.BlockedServices.Clone(),
 
-			IDs:       cli.IDs(),
+			IDs:       cli.Identifiers(),
 			Tags:      slices.Clone(cli.Tags),
 			Upstreams: slices.Clone(cli.Upstreams),
 
@@ -359,7 +359,8 @@ func (clients *clientsContainer) clientOrArtificial(
 
 // shouldCountClient is a wrapper around [clientsContainer.find] to make it a
 // valid client information finder for the statistics.  If no information about
-// the client is found, it returns true.
+// the client is found, it returns true.  Values of ids must be either a valid
+// ClientID or a valid IP address.
 //
 // TODO(s.chzhen):  Accept [client.FindParams].
 func (clients *clientsContainer) shouldCountClient(ids []string) (y bool) {
@@ -369,6 +370,13 @@ func (clients *clientsContainer) shouldCountClient(ids []string) (y bool) {
 	for _, id := range ids {
 		params, err := client.ParseFindParams(id)
 		if err != nil {
+			// Should not happen.
+			clients.baseLogger.Debug(
+				"parsing find params",
+				slogutil.KeyPrefix, "client_container",
+				slogutil.KeyError, err,
+			)
+
 			continue
 		}
 

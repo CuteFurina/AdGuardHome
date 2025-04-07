@@ -1270,3 +1270,104 @@ func TestStorage_CustomUpstreamConfig(t *testing.T) {
 		assert.NotEqual(t, conf, updConf)
 	})
 }
+
+func BenchmarkParseFindParams(b *testing.B) {
+	benchCases := []struct {
+		name string
+		id   string
+	}{{
+		name: "ip_address",
+		id:   "192.0.2.1",
+	}, {
+		name: "client_id",
+		id:   "cid",
+	}}
+
+	var params *client.FindParams
+	for _, bc := range benchCases {
+		b.Run(bc.name, func(b *testing.B) {
+			var err error
+
+			b.ReportAllocs()
+			for b.Loop() {
+				params, err = client.ParseFindParams(bc.id)
+			}
+
+			require.NoError(b, err)
+		})
+	}
+
+	assert.NotNil(b, params)
+
+	// Most recent results:
+	//
+	//	goos: linux
+	//	goarch: amd64
+	//	pkg: github.com/AdguardTeam/AdGuardHome/internal/client
+	//	cpu: Intel(R) Core(TM) i7-10510U CPU @ 1.80GHz
+	//	BenchmarkParseFindParams/ip_address-8         	 6525130	       156.7 ns/op	     144 B/op	       2 allocs/op
+	//	BenchmarkParseFindParams/client_id-8          	 9736407	       140.7 ns/op	     144 B/op	       2 allocs/op
+}
+
+func BenchmarkFind(b *testing.B) {
+	const cliID = "cid"
+
+	cliIP := netip.MustParseAddr("192.0.2.1")
+
+	var (
+		clientWithID = &client.Persistent{
+			Name:      "client_with_id",
+			ClientIDs: []client.ClientID{cliID},
+		}
+		clientWithIP = &client.Persistent{
+			Name: "client_with_ip",
+			IPs:  []netip.Addr{cliIP},
+		}
+	)
+
+	clients := []*client.Persistent{
+		clientWithID,
+		clientWithIP,
+	}
+	s := newStorage(b, clients)
+
+	benchCases := []struct {
+		params *client.FindParams
+		name   string
+	}{{
+		params: &client.FindParams{
+			ClientID: cliID,
+		},
+		name: "client_id",
+	}, {
+		params: &client.FindParams{
+			RemoteIP: cliIP,
+		},
+		name: "ip_address",
+	}}
+
+	var p *client.Persistent
+	for _, bc := range benchCases {
+		b.Run(bc.name, func(b *testing.B) {
+			var ok bool
+
+			b.ReportAllocs()
+			for b.Loop() {
+				p, ok = s.Find(bc.params)
+			}
+
+			require.True(b, ok)
+		})
+	}
+
+	assert.NotNil(b, p)
+
+	// Most recent results:
+	//
+	//	goos: linux
+	//	goarch: amd64
+	//	pkg: github.com/AdguardTeam/AdGuardHome/internal/client
+	//	cpu: Intel(R) Core(TM) i7-10510U CPU @ 1.80GHz
+	//	BenchmarkFind/client_id-8                     	 2968888	       465.3 ns/op	     240 B/op	       2 allocs/op
+	//	BenchmarkFind/ip_address-8                    	 1973677	       612.5 ns/op	     248 B/op	       2 allocs/op
+}

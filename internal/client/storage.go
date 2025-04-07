@@ -435,7 +435,7 @@ func (s *Storage) Add(ctx context.Context, p *Persistent) (err error) {
 		ctx,
 		"client added",
 		"name", p.Name,
-		"ids", p.IDs(),
+		"ids", p.Identifiers(),
 		"clients_count", s.index.size(),
 	)
 
@@ -478,30 +478,27 @@ func ParseFindParams(id string) (params *FindParams, err error) {
 	isClientID := true
 
 	if netutil.IsValidIPString(id) {
-		var addr netip.Addr
-		addr, err = netip.ParseAddr(id)
-		// Even if id can be parsed as an IP address, it may be a MAC address.  So
-		// do not return prematurely, continue parsing.
-		if err == nil {
-			params.RemoteIP = addr
-			isClientID = false
-		}
+		// It is safe to use [netip.MustParseAddr] because it has already been
+		// validated that id contains the string representation of the IP
+		// address.
+		params.RemoteIP = netip.MustParseAddr(id)
+
+		// Even if id can be parsed as an IP address, it may be a MAC address.
+		// So do not return prematurely, continue parsing.
+		isClientID = false
 	}
 
 	if isValidIPPrefixString(id) {
-		var subnet netip.Prefix
-		subnet, err = netip.ParsePrefix(id)
+		params.Subnet, err = netip.ParsePrefix(id)
 		if err == nil {
-			params.Subnet = subnet
 			isClientID = false
 		}
 	}
 
 	// TODO(s.chzhen):  Add IsValidHardwareAddr check before parsing to reduce
 	// allocations.
-	mac, err := net.ParseMAC(id)
+	params.MAC, err = net.ParseMAC(id)
 	if err == nil {
-		params.MAC = mac
 		isClientID = false
 	}
 
@@ -509,7 +506,7 @@ func ParseFindParams(id string) (params *FindParams, err error) {
 		return params, nil
 	}
 
-	if !netutil.IsValidHostnameLabel(id) {
+	if !isValidClientID(id) {
 		return nil, ErrBadIdentifier
 	}
 
@@ -546,30 +543,30 @@ func isValidIPPrefixString(s string) (ok bool) {
 	return netutil.IsValidIPString(ipStr)
 }
 
-// Find represents the parameters for searching a client.  At least one
-// field must be non-empty.
+// Find represents the parameters for searching a client.  params must not be
+// nil and must have at least one non-empty field.
 func (s *Storage) Find(params *FindParams) (p *Persistent, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	clientID := params.ClientID != ""
-	remoteIP := params.RemoteIP != (netip.Addr{})
-	subnet := params.Subnet != (netip.Prefix{})
-	mac := params.MAC != nil
+	isClientID := params.ClientID != ""
+	isRemoteIP := params.RemoteIP != (netip.Addr{})
+	isSubnet := params.Subnet != (netip.Prefix{})
+	isMAC := params.MAC != nil
 
 	for {
 		switch {
-		case clientID:
-			clientID = false
+		case isClientID:
+			isClientID = false
 			p, ok = s.index.findByClientID(params.ClientID)
-		case remoteIP:
-			remoteIP = false
+		case isRemoteIP:
+			isRemoteIP = false
 			p, ok = s.findByIP(params.RemoteIP)
-		case subnet:
-			subnet = false
+		case isSubnet:
+			isSubnet = false
 			p, ok = s.index.findByCIDR(params.Subnet)
-		case mac:
-			mac = false
+		case isMAC:
+			isMAC = false
 			p, ok = s.index.findByMAC(params.MAC)
 		default:
 			return nil, false

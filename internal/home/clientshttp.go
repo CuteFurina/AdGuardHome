@@ -1,7 +1,6 @@
 package home
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -301,7 +300,7 @@ func clientToJSON(c *client.Persistent) (cj *clientJSON) {
 
 	return &clientJSON{
 		Name:                c.Name,
-		IDs:                 c.IDs(),
+		IDs:                 c.Identifiers(),
 		Tags:                c.Tags,
 		UseGlobalSettings:   !c.UseOwnSettings,
 		FilteringEnabled:    c.FilteringEnabled,
@@ -460,14 +459,13 @@ func (clients *clientsContainer) findClient(idStr string) (cj *clientJSON) {
 		return cj
 	}
 
-	ip := params.RemoteIP
 	c, ok := clients.storage.Find(params)
 	if !ok {
 		return clients.findRuntime(params)
 	}
 
 	cj = clientToJSON(c)
-	disallowed, rule := clients.clientChecker.IsBlockedClient(ip, idStr)
+	disallowed, rule := clients.clientChecker.IsBlockedClient(params.RemoteIP, idStr)
 	cj.Disallowed, cj.DisallowedRule = &disallowed, &rule
 
 	return cj
@@ -512,7 +510,13 @@ func (clients *clientsContainer) handleSearchClient(w http.ResponseWriter, r *ht
 // non-nil.
 func (clients *clientsContainer) findRuntime(params *client.FindParams) (cj *clientJSON) {
 	ip := params.RemoteIP
-	idStr := cmp.Or(string(params.ClientID), ip.String())
+	idStr := string(params.ClientID)
+	if idStr == "" {
+		// TODO(s.chzhen):  Investigate whether the [BlockedClientChecker] can
+		// handle an empty ClientID..
+		idStr = ip.String()
+	}
+
 	rc := clients.storage.ClientRuntime(ip)
 	if rc == nil {
 		// It is still possible that the IP used to be in the runtime clients
