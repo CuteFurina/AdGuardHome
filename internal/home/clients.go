@@ -367,8 +367,9 @@ func (clients *clientsContainer) shouldCountClient(ids []string) (y bool) {
 	clients.lock.Lock()
 	defer clients.lock.Unlock()
 
+	params := &client.FindParams{}
 	for _, id := range ids {
-		params, err := client.ParseFindParams(id)
+		err := params.ClearAndSet(id)
 		if err != nil {
 			// Should not happen.
 			clients.baseLogger.Debug(

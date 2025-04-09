@@ -464,16 +464,19 @@ type FindParams struct {
 	UID UID
 }
 
-// ErrBadIdentifier is returned by [ParseFindParams] when it cannot parse the
+// ErrBadIdentifier is returned by [ClearAndSet] when it cannot parse the
 // provided client identifier.
 const ErrBadIdentifier errors.Error = "bad client identifier"
 
-// ParseFindParams parses a string representation of the search parameter into
-// typed search parameters.
+// ClearAndSet clears the stored search parameters and parses the string
+// representation of the search parameter into typed parameter, storing it.  In
+// some cases, it may result in storing both an IP address and a MAC address
+// because they might have identical string representations.  It returns
+// [ErrBadIdentifier] if id cannot be parsed.
 //
 // TODO(s.chzhen):  Add support for UID.
-func ParseFindParams(id string) (params *FindParams, err error) {
-	params = &FindParams{}
+func (p *FindParams) ClearAndSet(id string) (err error) {
+	*p = FindParams{}
 
 	isClientID := true
 
@@ -481,7 +484,7 @@ func ParseFindParams(id string) (params *FindParams, err error) {
 		// It is safe to use [netip.MustParseAddr] because it has already been
 		// validated that id contains the string representation of the IP
 		// address.
-		params.RemoteIP = netip.MustParseAddr(id)
+		p.RemoteIP = netip.MustParseAddr(id)
 
 		// Even if id can be parsed as an IP address, it may be a MAC address.
 		// So do not return prematurely, continue parsing.
@@ -489,30 +492,30 @@ func ParseFindParams(id string) (params *FindParams, err error) {
 	}
 
 	if isValidIPPrefixString(id) {
-		params.Subnet, err = netip.ParsePrefix(id)
+		p.Subnet, err = netip.ParsePrefix(id)
 		if err == nil {
 			isClientID = false
 		}
 	}
 
-	// TODO(s.chzhen):  Add IsValidHardwareAddr check before parsing to reduce
-	// allocations.
-	params.MAC, err = net.ParseMAC(id)
-	if err == nil {
-		isClientID = false
+	if isValidMACString(id) {
+		p.MAC, err = net.ParseMAC(id)
+		if err == nil {
+			isClientID = false
+		}
 	}
 
 	if !isClientID {
-		return params, nil
+		return nil
 	}
 
 	if !isValidClientID(id) {
-		return nil, ErrBadIdentifier
+		return ErrBadIdentifier
 	}
 
-	params.ClientID = ClientID(id)
+	p.ClientID = ClientID(id)
 
-	return params, nil
+	return nil
 }
 
 // isValidIPPrefixString is a best-effort check to determine if s is a valid
@@ -541,6 +544,23 @@ func isValidIPPrefixString(s string) (ok bool) {
 	}
 
 	return netutil.IsValidIPString(ipStr)
+}
+
+// isValidMACString is a best-effort check to determine if s is a valid MAC
+// address before using [net.ParseMAC], aimed at reducing allocations.
+func isValidMACString(s string) (ok bool) {
+	switch len(s) {
+	case
+		len("0000.0000.0000"),
+		len("00:00:00:00:00:00"),
+		len("0000.0000.0000.0000"),
+		len("00:00:00:00:00:00:00:00"),
+		len("0000.0000.0000.0000.0000.0000.0000.0000.0000.0000"),
+		len("00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00"):
+		return true
+	default:
+		return false
+	}
 }
 
 // Find represents the parameters for searching a client.  params must not be

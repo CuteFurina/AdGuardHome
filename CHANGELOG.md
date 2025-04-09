@@ -20,7 +20,7 @@ NOTE: Add new changes BELOW THIS COMMENT.
 
 ### Fixed
 
-- Searching for persistent clients by CIDR in the `POST /clients/search HTTP API`.
+- Searching for persistent clients using an exact match for CIDR in the `POST /clients/search HTTP API`.
 
 - Rules with the `client` modifier not working ([#7708]).
 

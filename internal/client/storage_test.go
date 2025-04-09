@@ -519,8 +519,8 @@ func TestClientsDHCP(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		var params *client.FindParams
-		params, err = client.ParseFindParams(prsCliIP.String())
+		params := &client.FindParams{}
+		err = params.ClearAndSet(prsCliIP.String())
 		require.NoError(t, err)
 
 		prsCli, ok := storage.Find(params)
@@ -954,7 +954,8 @@ func TestStorage_Find(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, id := range tc.ids {
-				params, err := client.ParseFindParams(id)
+				params := &client.FindParams{}
+				err := params.ClearAndSet(id)
 				require.NoError(t, err)
 
 				c, ok := s.Find(params)
@@ -966,7 +967,8 @@ func TestStorage_Find(t *testing.T) {
 	}
 
 	t.Run("not_found", func(t *testing.T) {
-		params, err := client.ParseFindParams(cliIPNone)
+		params := &client.FindParams{}
+		err := params.ClearAndSet(cliIPNone)
 		require.NoError(t, err)
 
 		_, ok := s.Find(params)
@@ -1271,7 +1273,7 @@ func TestStorage_CustomUpstreamConfig(t *testing.T) {
 	})
 }
 
-func BenchmarkParseFindParams(b *testing.B) {
+func BenchmarkClearAndSet(b *testing.B) {
 	benchCases := []struct {
 		name string
 		id   string
@@ -1283,14 +1285,14 @@ func BenchmarkParseFindParams(b *testing.B) {
 		id:   "cid",
 	}}
 
-	var params *client.FindParams
+	params := &client.FindParams{}
 	for _, bc := range benchCases {
 		b.Run(bc.name, func(b *testing.B) {
 			var err error
 
 			b.ReportAllocs()
 			for b.Loop() {
-				params, err = client.ParseFindParams(bc.id)
+				err = params.ClearAndSet(bc.id)
 			}
 
 			require.NoError(b, err)
@@ -1305,8 +1307,8 @@ func BenchmarkParseFindParams(b *testing.B) {
 	//	goarch: amd64
 	//	pkg: github.com/AdguardTeam/AdGuardHome/internal/client
 	//	cpu: Intel(R) Core(TM) i7-10510U CPU @ 1.80GHz
-	//	BenchmarkParseFindParams/ip_address-8         	 6525130	       156.7 ns/op	     144 B/op	       2 allocs/op
-	//	BenchmarkParseFindParams/client_id-8          	 9736407	       140.7 ns/op	     144 B/op	       2 allocs/op
+	//	BenchmarkClearAndSet/ip_address-8         	15518245	        65.38 ns/op	       0 B/op	       0 allocs/op
+	//	BenchmarkClearAndSet/client_id-8          	68664494	        17.93 ns/op	       0 B/op	       0 allocs/op
 }
 
 func BenchmarkFind(b *testing.B) {
