@@ -185,7 +185,6 @@ func (ds *DefaultSessionStorage) processSessions(bkt *bbolt.Bucket) (removed int
 
 		return nil
 	})
-
 	if err != nil {
 		// Don't wrap the error because it's informative enough as is.
 		return removed, err
