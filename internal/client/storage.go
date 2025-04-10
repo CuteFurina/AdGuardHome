@@ -638,6 +638,11 @@ func (s *Storage) FindLoose(ip netip.Addr, id string) (p *Persistent, ok bool) {
 		return p.ShallowClone(), ok
 	}
 
+	foundMAC := s.dhcp.MACByIP(ip)
+	if foundMAC != nil {
+		return s.FindByMAC(foundMAC)
+	}
+
 	p = s.index.findByIPWithoutZone(ip)
 	if p != nil {
 		return p.ShallowClone(), true
@@ -811,6 +816,13 @@ func (s *Storage) ApplyClientFiltering(id string, addr netip.Addr, setts *filter
 	c, ok := s.index.findByClientID(ClientID(id))
 	if !ok {
 		c, ok = s.index.findByIP(addr)
+	}
+
+	if !ok {
+		foundMAC := s.dhcp.MACByIP(addr)
+		if foundMAC != nil {
+			c, ok = s.FindByMAC(foundMAC)
+		}
 	}
 
 	if !ok {
