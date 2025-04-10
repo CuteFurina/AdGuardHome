@@ -491,14 +491,14 @@ func (p *FindParams) ClearAndSet(id string) (err error) {
 		isClientID = false
 	}
 
-	if isValidIPPrefixString(id) {
+	if canBeValidIPPrefixString(id) {
 		p.Subnet, err = netip.ParsePrefix(id)
 		if err == nil {
 			isClientID = false
 		}
 	}
 
-	if isValidMACString(id) {
+	if canBeMACString(id) {
 		p.MAC, err = net.ParseMAC(id)
 		if err == nil {
 			isClientID = false
@@ -518,9 +518,12 @@ func (p *FindParams) ClearAndSet(id string) (err error) {
 	return nil
 }
 
-// isValidIPPrefixString is a best-effort check to determine if s is a valid
+// canBeValidIPPrefixString is a best-effort check to determine if s is a valid
 // CIDR before using [netip.ParsePrefix], aimed at reducing allocations.
-func isValidIPPrefixString(s string) (ok bool) {
+//
+// TODO(s.chzhen):  Replace this implementation with the more robust version
+// from golibs.
+func canBeValidIPPrefixString(s string) (ok bool) {
 	ipStr, bitStr, ok := strings.Cut(s, "/")
 	if !ok {
 		return false
@@ -531,7 +534,7 @@ func isValidIPPrefixString(s string) (ok bool) {
 	}
 
 	bits := 0
-	for c := range bitStr {
+	for _, c := range bitStr {
 		if c < '0' || c > '9' {
 			return false
 		}
@@ -546,9 +549,12 @@ func isValidIPPrefixString(s string) (ok bool) {
 	return netutil.IsValidIPString(ipStr)
 }
 
-// isValidMACString is a best-effort check to determine if s is a valid MAC
+// canBeMACString is a best-effort check to determine if s is a valid MAC
 // address before using [net.ParseMAC], aimed at reducing allocations.
-func isValidMACString(s string) (ok bool) {
+//
+// TODO(s.chzhen):  Replace this implementation with the more robust version
+// from golibs.
+func canBeMACString(s string) (ok bool) {
 	switch len(s) {
 	case
 		len("0000.0000.0000"),

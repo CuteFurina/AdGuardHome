@@ -15,6 +15,7 @@ import (
 	"github.com/AdguardTeam/AdGuardHome/internal/dhcpsvc"
 	"github.com/AdguardTeam/AdGuardHome/internal/dnsforward"
 	"github.com/AdguardTeam/AdGuardHome/internal/whois"
+	"github.com/AdguardTeam/golibs/errors"
 	"github.com/AdguardTeam/golibs/hostsfile"
 	"github.com/AdguardTeam/golibs/logutil/slogutil"
 	"github.com/AdguardTeam/golibs/testutil"
@@ -350,15 +351,15 @@ func TestClientsDHCP(t *testing.T) {
 		cliName1 = "one.dhcp"
 
 		cliIP2   = netip.MustParseAddr("2.2.2.2")
-		cliMAC2  = mustParseMAC("22:22:22:22:22:22")
+		cliMAC2  = errors.Must(net.ParseMAC("22:22:22:22:22:22"))
 		cliName2 = "two.dhcp"
 
 		cliIP3   = netip.MustParseAddr("3.3.3.3")
-		cliMAC3  = mustParseMAC("33:33:33:33:33:33")
+		cliMAC3  = errors.Must(net.ParseMAC("33:33:33:33:33:33"))
 		cliName3 = "three.dhcp"
 
 		prsCliIP   = netip.MustParseAddr("4.3.2.1")
-		prsCliMAC  = mustParseMAC("AA:AA:AA:AA:AA:AA")
+		prsCliMAC  = errors.Must(net.ParseMAC("AA:AA:AA:AA:AA:AA"))
 		prsCliName = "persistent.dhcp"
 
 		otherARPCliName = "other.arp"
@@ -667,17 +668,6 @@ func newStorage(tb testing.TB, m []*client.Persistent) (s *client.Storage) {
 	return s
 }
 
-// mustParseMAC is wrapper around [net.ParseMAC] that panics if there is an
-// error.
-func mustParseMAC(s string) (mac net.HardwareAddr) {
-	mac, err := net.ParseMAC(s)
-	if err != nil {
-		panic(err)
-	}
-
-	return mac
-}
-
 func TestStorage_Add(t *testing.T) {
 	const (
 		existingName     = "existing_name"
@@ -902,7 +892,7 @@ func TestStorage_Find(t *testing.T) {
 
 		clientWithMAC = &client.Persistent{
 			Name: "client_with_mac",
-			MACs: []net.HardwareAddr{mustParseMAC(cliMAC)},
+			MACs: []net.HardwareAddr{errors.Must(net.ParseMAC(cliMAC))},
 		}
 
 		clientWithID = &client.Persistent{
@@ -1274,20 +1264,56 @@ func TestStorage_CustomUpstreamConfig(t *testing.T) {
 }
 
 func BenchmarkClearAndSet(b *testing.B) {
+	const (
+		testIPStr    = "192.0.2.1"
+		testCIDRStr  = "192.0.2.0/24"
+		testMACStr   = "02:00:00:00:00:00"
+		testClientID = "clientid"
+	)
+
 	benchCases := []struct {
-		name string
-		id   string
+		wantErr error
+		params  *client.FindParams
+		name    string
+		id      string
 	}{{
-		name: "ip_address",
-		id:   "192.0.2.1",
-	}, {
+		wantErr: nil,
+		params: &client.FindParams{
+			ClientID: testClientID,
+		},
 		name: "client_id",
-		id:   "cid",
+		id:   testClientID,
+	}, {
+		wantErr: nil,
+		params: &client.FindParams{
+			RemoteIP: netip.MustParseAddr(testIPStr),
+		},
+		name: "ip_address",
+		id:   testIPStr,
+	}, {
+		wantErr: nil,
+		params: &client.FindParams{
+			Subnet: netip.MustParsePrefix(testCIDRStr),
+		},
+		name: "subnet",
+		id:   testCIDRStr,
+	}, {
+		wantErr: nil,
+		params: &client.FindParams{
+			MAC: errors.Must(net.ParseMAC(testMACStr)),
+		},
+		name: "mac_address",
+		id:   testMACStr,
+	}, {
+		wantErr: client.ErrBadIdentifier,
+		params:  &client.FindParams{},
+		name:    "bad_id",
+		id:      "!@#$%^&*()_+",
 	}}
 
-	params := &client.FindParams{}
 	for _, bc := range benchCases {
 		b.Run(bc.name, func(b *testing.B) {
+			params := &client.FindParams{}
 			var err error
 
 			b.ReportAllocs()
@@ -1295,11 +1321,10 @@ func BenchmarkClearAndSet(b *testing.B) {
 				err = params.ClearAndSet(bc.id)
 			}
 
-			require.NoError(b, err)
+			assert.ErrorIs(b, bc.wantErr, err)
+			assert.Equal(b, bc.params, params)
 		})
 	}
-
-	assert.NotNil(b, params)
 
 	// Most recent results:
 	//
@@ -1307,50 +1332,91 @@ func BenchmarkClearAndSet(b *testing.B) {
 	//	goarch: amd64
 	//	pkg: github.com/AdguardTeam/AdGuardHome/internal/client
 	//	cpu: Intel(R) Core(TM) i7-10510U CPU @ 1.80GHz
-	//	BenchmarkClearAndSet/ip_address-8         	15518245	        65.38 ns/op	       0 B/op	       0 allocs/op
-	//	BenchmarkClearAndSet/client_id-8          	68664494	        17.93 ns/op	       0 B/op	       0 allocs/op
+	//	BenchmarkClearAndSet/client_id-8         	49463488	        24.27 ns/op	       0 B/op	       0 allocs/op
+	//	BenchmarkClearAndSet/ip_address-8        	18740977	        62.22 ns/op	       0 B/op	       0 allocs/op
+	//	BenchmarkClearAndSet/subnet-8            	10848192	       110.0 ns/op	       0 B/op	       0 allocs/op
+	//	BenchmarkClearAndSet/mac_address-8       	 8148494	       133.2 ns/op	       8 B/op	       1 allocs/op
+	//	BenchmarkClearAndSet/bad_id-8            	73894278	        16.29 ns/op	       0 B/op	       0 allocs/op
 }
 
 func BenchmarkFind(b *testing.B) {
-	const cliID = "cid"
+	const (
+		cliID  = "cid"
+		cliMAC = "02:00:00:00:00:00"
+	)
 
-	cliIP := netip.MustParseAddr("192.0.2.1")
+	const (
+		cliNameWithID   = "client_with_id"
+		cliNameWithIP   = "client_with_ip"
+		cliNameWithCIDR = "client_with_cidr"
+		cliNameWithMAC  = "client_with_mac"
+	)
+
+	var (
+		cliIP   = netip.MustParseAddr("192.0.2.1")
+		cliCIDR = netip.MustParsePrefix("192.0.2.0/24")
+	)
 
 	var (
 		clientWithID = &client.Persistent{
-			Name:      "client_with_id",
+			Name:      cliNameWithID,
 			ClientIDs: []client.ClientID{cliID},
 		}
 		clientWithIP = &client.Persistent{
-			Name: "client_with_ip",
+			Name: cliNameWithIP,
 			IPs:  []netip.Addr{cliIP},
+		}
+		clientWithCIDR = &client.Persistent{
+			Name:    cliNameWithCIDR,
+			Subnets: []netip.Prefix{cliCIDR},
+		}
+		clientWithMAC = &client.Persistent{
+			Name: cliNameWithMAC,
+			MACs: []net.HardwareAddr{errors.Must(net.ParseMAC(cliMAC))},
 		}
 	)
 
 	clients := []*client.Persistent{
 		clientWithID,
 		clientWithIP,
+		clientWithCIDR,
+		clientWithMAC,
 	}
 	s := newStorage(b, clients)
 
 	benchCases := []struct {
-		params *client.FindParams
-		name   string
+		params   *client.FindParams
+		name     string
+		wantName string
 	}{{
 		params: &client.FindParams{
 			ClientID: cliID,
 		},
-		name: "client_id",
+		name:     "client_id",
+		wantName: cliNameWithID,
 	}, {
 		params: &client.FindParams{
 			RemoteIP: cliIP,
 		},
-		name: "ip_address",
+		name:     "ip_address",
+		wantName: cliNameWithIP,
+	}, {
+		params: &client.FindParams{
+			Subnet: cliCIDR,
+		},
+		name:     "subnet",
+		wantName: cliNameWithCIDR,
+	}, {
+		params: &client.FindParams{
+			MAC: errors.Must(net.ParseMAC(cliMAC)),
+		},
+		name:     "mac_address",
+		wantName: cliNameWithMAC,
 	}}
 
-	var p *client.Persistent
 	for _, bc := range benchCases {
 		b.Run(bc.name, func(b *testing.B) {
+			var p *client.Persistent
 			var ok bool
 
 			b.ReportAllocs()
@@ -1358,11 +1424,11 @@ func BenchmarkFind(b *testing.B) {
 				p, ok = s.Find(bc.params)
 			}
 
-			require.True(b, ok)
+			assert.True(b, ok)
+			assert.NotNil(b, p)
+			assert.Equal(b, bc.wantName, p.Name)
 		})
 	}
-
-	assert.NotNil(b, p)
 
 	// Most recent results:
 	//
@@ -1370,6 +1436,8 @@ func BenchmarkFind(b *testing.B) {
 	//	goarch: amd64
 	//	pkg: github.com/AdguardTeam/AdGuardHome/internal/client
 	//	cpu: Intel(R) Core(TM) i7-10510U CPU @ 1.80GHz
-	//	BenchmarkFind/client_id-8                     	 2968888	       465.3 ns/op	     240 B/op	       2 allocs/op
-	//	BenchmarkFind/ip_address-8                    	 1973677	       612.5 ns/op	     248 B/op	       2 allocs/op
+	//	BenchmarkFind/client_id-8         	 6945201	       157.4 ns/op	     240 B/op	       2 allocs/op
+	//	BenchmarkFind/ip_address-8        	 7000094	       165.3 ns/op	     248 B/op	       2 allocs/op
+	//	BenchmarkFind/subnet-8            	 6872064	       163.6 ns/op	     256 B/op	       2 allocs/op
+	//	BenchmarkFind/mac_address-8       	 5693320	       205.2 ns/op	     256 B/op	       3 allocs/op
 }

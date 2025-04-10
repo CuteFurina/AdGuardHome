@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"testing"
 
+	"github.com/AdguardTeam/golibs/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -58,7 +59,7 @@ func TestClientIndex_Find(t *testing.T) {
 
 		clientWithMAC = &Persistent{
 			Name: "client_with_mac",
-			MACs: []net.HardwareAddr{mustParseMAC(cliMAC)},
+			MACs: []net.HardwareAddr{errors.Must(net.ParseMAC(cliMAC))},
 		}
 
 		clientWithID = &Persistent{
@@ -141,7 +142,7 @@ func TestClientIndex_Clashes(t *testing.T) {
 		Subnets: []netip.Prefix{netip.MustParsePrefix(cliSubnet)},
 	}, {
 		Name: "client_with_mac",
-		MACs: []net.HardwareAddr{mustParseMAC(cliMAC)},
+		MACs: []net.HardwareAddr{errors.Must(net.ParseMAC(cliMAC))},
 	}, {
 		Name:      "client_with_id",
 		ClientIDs: []ClientID{cliID},
@@ -181,17 +182,6 @@ func TestClientIndex_Clashes(t *testing.T) {
 	}
 }
 
-// mustParseMAC is wrapper around [net.ParseMAC] that panics if there is an
-// error.
-func mustParseMAC(s string) (mac net.HardwareAddr) {
-	mac, err := net.ParseMAC(s)
-	if err != nil {
-		panic(err)
-	}
-
-	return mac
-}
-
 func TestMACToKey(t *testing.T) {
 	testCases := []struct {
 		want any
@@ -200,44 +190,44 @@ func TestMACToKey(t *testing.T) {
 	}{{
 		name: "column6",
 		in:   "00:00:5e:00:53:01",
-		want: [6]byte(mustParseMAC("00:00:5e:00:53:01")),
+		want: [6]byte(errors.Must(net.ParseMAC("00:00:5e:00:53:01"))),
 	}, {
 		name: "column8",
 		in:   "02:00:5e:10:00:00:00:01",
-		want: [8]byte(mustParseMAC("02:00:5e:10:00:00:00:01")),
+		want: [8]byte(errors.Must(net.ParseMAC("02:00:5e:10:00:00:00:01"))),
 	}, {
 		name: "column20",
 		in:   "00:00:00:00:fe:80:00:00:00:00:00:00:02:00:5e:10:00:00:00:01",
-		want: [20]byte(mustParseMAC("00:00:00:00:fe:80:00:00:00:00:00:00:02:00:5e:10:00:00:00:01")),
+		want: [20]byte(errors.Must(net.ParseMAC("00:00:00:00:fe:80:00:00:00:00:00:00:02:00:5e:10:00:00:00:01"))),
 	}, {
 		name: "hyphen6",
 		in:   "00-00-5e-00-53-01",
-		want: [6]byte(mustParseMAC("00-00-5e-00-53-01")),
+		want: [6]byte(errors.Must(net.ParseMAC("00-00-5e-00-53-01"))),
 	}, {
 		name: "hyphen8",
 		in:   "02-00-5e-10-00-00-00-01",
-		want: [8]byte(mustParseMAC("02-00-5e-10-00-00-00-01")),
+		want: [8]byte(errors.Must(net.ParseMAC("02-00-5e-10-00-00-00-01"))),
 	}, {
 		name: "hyphen20",
 		in:   "00-00-00-00-fe-80-00-00-00-00-00-00-02-00-5e-10-00-00-00-01",
-		want: [20]byte(mustParseMAC("00-00-00-00-fe-80-00-00-00-00-00-00-02-00-5e-10-00-00-00-01")),
+		want: [20]byte(errors.Must(net.ParseMAC("00-00-00-00-fe-80-00-00-00-00-00-00-02-00-5e-10-00-00-00-01"))),
 	}, {
 		name: "dot6",
 		in:   "0000.5e00.5301",
-		want: [6]byte(mustParseMAC("0000.5e00.5301")),
+		want: [6]byte(errors.Must(net.ParseMAC("0000.5e00.5301"))),
 	}, {
 		name: "dot8",
 		in:   "0200.5e10.0000.0001",
-		want: [8]byte(mustParseMAC("0200.5e10.0000.0001")),
+		want: [8]byte(errors.Must(net.ParseMAC("0200.5e10.0000.0001"))),
 	}, {
 		name: "dot20",
 		in:   "0000.0000.fe80.0000.0000.0000.0200.5e10.0000.0001",
-		want: [20]byte(mustParseMAC("0000.0000.fe80.0000.0000.0000.0200.5e10.0000.0001")),
+		want: [20]byte(errors.Must(net.ParseMAC("0000.0000.fe80.0000.0000.0000.0200.5e10.0000.0001"))),
 	}}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			mac := mustParseMAC(tc.in)
+			mac := errors.Must(net.ParseMAC(tc.in))
 
 			key := macToKey(mac)
 			assert.Equal(t, tc.want, key)
@@ -413,9 +403,9 @@ func TestIndex_FindByName(t *testing.T) {
 
 func TestIndex_FindByMAC(t *testing.T) {
 	var (
-		cliMAC               = mustParseMAC("11:11:11:11:11:11")
-		cliAnotherMAC        = mustParseMAC("22:22:22:22:22:22")
-		nonExistingClientMAC = mustParseMAC("33:33:33:33:33:33")
+		cliMAC               = errors.Must(net.ParseMAC("11:11:11:11:11:11"))
+		cliAnotherMAC        = errors.Must(net.ParseMAC("22:22:22:22:22:22"))
+		nonExistingClientMAC = errors.Must(net.ParseMAC("33:33:33:33:33:33"))
 	)
 
 	var (

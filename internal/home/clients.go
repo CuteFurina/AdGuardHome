@@ -357,7 +357,7 @@ func (clients *clientsContainer) clientOrArtificial(
 	}, true
 }
 
-// shouldCountClient is a wrapper around [clientsContainer.find] to make it a
+// shouldCountClient is a wrapper around [client.Storage.Find] to make it a
 // valid client information finder for the statistics.  If no information about
 // the client is found, it returns true.  Values of ids must be either a valid
 // ClientID or a valid IP address.

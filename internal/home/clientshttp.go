@@ -514,7 +514,7 @@ func (clients *clientsContainer) findRuntime(params *client.FindParams) (cj *cli
 	idStr := string(params.ClientID)
 	if idStr == "" {
 		// TODO(s.chzhen):  Investigate whether the [BlockedClientChecker] can
-		// handle an empty ClientID..
+		// handle an empty ClientID.
 		idStr = ip.String()
 	}
 
