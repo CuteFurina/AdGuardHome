@@ -43,6 +43,10 @@ type DefaultSessionStorageConfig struct {
 	// Clock is used to get the current time.  It must not be nil.
 	Clock timeutil.Clock
 
+	// UserDB contains the web user information such as ID, login, and password.
+	// It must not be nil.
+	UserDB DB
+
 	// Logger is used for logging the operation of the session storage.  It must
 	// not be nil.
 	Logger *slog.Logger
@@ -61,6 +65,9 @@ type DefaultSessionStorageConfig struct {
 type DefaultSessionStorage struct {
 	// clock is used to get the current time.
 	clock timeutil.Clock
+
+	// userDB contains the web user information such as ID, login, and password.
+	userDB DB
 
 	// logger is used for logging the operation of the session storage.
 	logger *slog.Logger
@@ -87,6 +94,7 @@ func NewDefaultSessionStorage(
 ) (ds *DefaultSessionStorage, err error) {
 	ds = &DefaultSessionStorage{
 		clock:      conf.Clock,
+		userDB:     conf.UserDB,
 		logger:     conf.Logger,
 		mu:         &sync.Mutex{},
 		sessions:   map[SessionToken]*Session{},
@@ -137,7 +145,7 @@ func (ds *DefaultSessionStorage) loadSessions(ctx context.Context) (err error) {
 		return nil
 	}
 
-	removed, err := ds.processSessions(bkt)
+	removed, err := ds.processSessions(ctx, bkt)
 	if err != nil {
 		return fmt.Errorf("processing sessions: %w", err)
 	}
@@ -166,31 +174,49 @@ func (ds *DefaultSessionStorage) loadSessions(ctx context.Context) (err error) {
 
 // processSessions iterates over the sessions bucket and loads or removes
 // sessions as needed.
-func (ds *DefaultSessionStorage) processSessions(bkt *bbolt.Bucket) (removed int, err error) {
+func (ds *DefaultSessionStorage) processSessions(
+	ctx context.Context,
+	bkt *bbolt.Bucket,
+) (removed int, err error) {
 	now := ds.clock.Now()
+	invalidSessions := [][]byte{}
 
 	err = bkt.ForEach(func(k, v []byte) error {
 		s := &Session{}
-		if s.deserialize(v) && s.Expire.After(now) {
-			ds.sessions[SessionToken(k)] = s
+
+		if !s.deserialize(v) || now.After(s.Expire) {
+			invalidSessions = append(invalidSessions, k)
 
 			return nil
 		}
 
-		if err = bkt.Delete(k); err != nil {
-			return fmt.Errorf("deleting expired session: %w", err)
+		var u *User
+		u, err = ds.userDB.ByLogin(ctx, s.UserLogin)
+		if err != nil {
+			invalidSessions = append(invalidSessions, k)
+
+			return nil
 		}
 
-		removed++
+		t := SessionToken(k)
+		s.Token = t
+		s.UserID = u.ID
+		ds.sessions[t] = s
 
 		return nil
 	})
 	if err != nil {
 		// Don't wrap the error because it's informative enough as is.
-		return removed, err
+		return 0, err
 	}
 
-	return removed, nil
+	for _, s := range invalidSessions {
+		if err = bkt.Delete(s); err != nil {
+			return 0, fmt.Errorf("deleting session: %w", err)
+		}
+	}
+
+	return len(invalidSessions), nil
 }
 
 // type check
@@ -222,11 +248,9 @@ func (ds *DefaultSessionStorage) store(s *Session) (err error) {
 
 	needRollback := true
 	defer func() {
-		if !needRollback {
-			return
+		if needRollback {
+			err = errors.Join(err, tx.Rollback())
 		}
-
-		err = errors.Join(err, tx.Rollback())
 	}()
 
 	bkt, err := tx.CreateBucketIfNotExists([]byte(bucketNameSessions))
@@ -288,11 +312,9 @@ func (ds *DefaultSessionStorage) remove(ctx context.Context, token []byte) (err 
 
 	needRollback := true
 	defer func() {
-		if !needRollback {
-			return
+		if needRollback {
+			err = errors.Join(err, tx.Rollback())
 		}
-
-		err = errors.Join(err, tx.Rollback())
 	}()
 
 	bkt := tx.Bucket([]byte(bucketNameSessions))

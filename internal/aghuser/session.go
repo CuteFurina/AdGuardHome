@@ -24,6 +24,8 @@ type Session struct {
 	Expire time.Time
 
 	// UserLogin is the login of the web user associated with the session.
+	//
+	// TODO(s.chzhen):  Remove this field and associate the user by UserID.
 	UserLogin Login
 
 	// Token is the session token.
