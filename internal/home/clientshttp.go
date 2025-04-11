@@ -447,7 +447,7 @@ func (clients *clientsContainer) handleFindClient(w http.ResponseWriter, r *http
 // client's storage or access settings.  cj is guaranteed to be non-nil.
 func (clients *clientsContainer) findClient(idStr string) (cj *clientJSON) {
 	params := &client.FindParams{}
-	err := params.ClearAndSet(idStr)
+	err := params.Set(idStr)
 	if err != nil {
 		disallowed, rule := clients.clientChecker.IsBlockedClient(netip.Addr{}, idStr)
 		cj = &clientJSON{

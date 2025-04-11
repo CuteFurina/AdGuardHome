@@ -468,14 +468,14 @@ type FindParams struct {
 // provided client identifier.
 const ErrBadIdentifier errors.Error = "bad client identifier"
 
-// ClearAndSet clears the stored search parameters and parses the string
-// representation of the search parameter into typed parameter, storing it.  In
-// some cases, it may result in storing both an IP address and a MAC address
-// because they might have identical string representations.  It returns
-// [ErrBadIdentifier] if id cannot be parsed.
+// Set clears the stored search parameters and parses the string representation
+// of the search parameter into typed parameter, storing it.  In some cases, it
+// may result in storing both an IP address and a MAC address because they might
+// have identical string representations.  It returns [ErrBadIdentifier] if id
+// cannot be parsed.
 //
 // TODO(s.chzhen):  Add support for UID.
-func (p *FindParams) ClearAndSet(id string) (err error) {
+func (p *FindParams) Set(id string) (err error) {
 	*p = FindParams{}
 
 	isClientID := true
@@ -640,7 +640,7 @@ func (s *Storage) FindLoose(ip netip.Addr, id string) (p *Persistent, ok bool) {
 
 	foundMAC := s.dhcp.MACByIP(ip)
 	if foundMAC != nil {
-		return s.FindByMAC(foundMAC)
+		return s.index.findByMAC(foundMAC)
 	}
 
 	p = s.index.findByIPWithoutZone(ip)
@@ -821,7 +821,7 @@ func (s *Storage) ApplyClientFiltering(id string, addr netip.Addr, setts *filter
 	if !ok {
 		foundMAC := s.dhcp.MACByIP(addr)
 		if foundMAC != nil {
-			c, ok = s.FindByMAC(foundMAC)
+			c, ok = s.index.findByMAC(foundMAC)
 		}
 	}
 

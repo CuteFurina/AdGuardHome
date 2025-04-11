@@ -521,7 +521,7 @@ func TestClientsDHCP(t *testing.T) {
 		require.NoError(t, err)
 
 		params := &client.FindParams{}
-		err = params.ClearAndSet(prsCliIP.String())
+		err = params.Set(prsCliIP.String())
 		require.NoError(t, err)
 
 		prsCli, ok := storage.Find(params)
@@ -945,7 +945,7 @@ func TestStorage_Find(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, id := range tc.ids {
 				params := &client.FindParams{}
-				err := params.ClearAndSet(id)
+				err := params.Set(id)
 				require.NoError(t, err)
 
 				c, ok := s.Find(params)
@@ -958,7 +958,7 @@ func TestStorage_Find(t *testing.T) {
 
 	t.Run("not_found", func(t *testing.T) {
 		params := &client.FindParams{}
-		err := params.ClearAndSet(cliIPNone)
+		err := params.Set(cliIPNone)
 		require.NoError(t, err)
 
 		_, ok := s.Find(params)
@@ -1318,10 +1318,10 @@ func BenchmarkClearAndSet(b *testing.B) {
 
 			b.ReportAllocs()
 			for b.Loop() {
-				err = params.ClearAndSet(bc.id)
+				err = params.Set(bc.id)
 			}
 
-			assert.ErrorIs(b, bc.wantErr, err)
+			assert.ErrorIs(b, err, bc.wantErr)
 			assert.Equal(b, bc.params, params)
 		})
 	}

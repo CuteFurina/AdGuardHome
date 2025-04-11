@@ -342,11 +342,6 @@ func TestClientIndex_RangeByName(t *testing.T) {
 
 func TestIndex_FindByName(t *testing.T) {
 	const (
-		cliIP1 = "1.1.1.1"
-		cliIP2 = "2.2.2.2"
-	)
-
-	const (
 		clientExistingName        = "client_existing"
 		clientAnotherExistingName = "client_another_existing"
 		nonExistingClientName     = "client_non_existing"
@@ -355,12 +350,12 @@ func TestIndex_FindByName(t *testing.T) {
 	var (
 		clientExisting = &Persistent{
 			Name: clientExistingName,
-			IPs:  []netip.Addr{netip.MustParseAddr(cliIP1)},
+			IPs:  []netip.Addr{netip.MustParseAddr("192.0.2.1")},
 		}
 
 		clientAnotherExisting = &Persistent{
 			Name: clientAnotherExistingName,
-			IPs:  []netip.Addr{netip.MustParseAddr(cliIP2)},
+			IPs:  []netip.Addr{netip.MustParseAddr("192.0.2.2")},
 		}
 	)
 

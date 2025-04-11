@@ -369,10 +369,10 @@ func (clients *clientsContainer) shouldCountClient(ids []string) (y bool) {
 
 	params := &client.FindParams{}
 	for _, id := range ids {
-		err := params.ClearAndSet(id)
+		err := params.Set(id)
 		if err != nil {
 			// Should not happen.
-			clients.baseLogger.Debug(
+			clients.baseLogger.Warn(
 				"parsing find params",
 				slogutil.KeyPrefix, "client_container",
 				slogutil.KeyError, err,
