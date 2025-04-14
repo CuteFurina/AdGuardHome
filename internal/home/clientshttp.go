@@ -64,6 +64,22 @@ type clientJSON struct {
 	UpstreamsCacheEnabled aghalg.NullBool `json:"upstreams_cache_enabled"`
 }
 
+// clientJSONWithBlockedInfo returns an initialized [*clientJSON] with the
+// access settings filled.  cj is always non-nil.
+func (clients *clientsContainer) clientJSONWithBlockedInfo(
+	addr netip.Addr,
+	idStr string,
+) (cj *clientJSON) {
+	disallowed, rule := clients.clientChecker.IsBlockedClient(addr, idStr)
+
+	return &clientJSON{
+		IDs:            []string{idStr},
+		Disallowed:     &disallowed,
+		DisallowedRule: &rule,
+		WHOIS:          &whois.Info{},
+	}
+}
+
 // runtimeClientJSON is a JSON representation of the [client.Runtime].
 type runtimeClientJSON struct {
 	WHOIS *whois.Info `json:"whois_info"`
@@ -429,40 +445,43 @@ func (clients *clientsContainer) handleUpdateClient(w http.ResponseWriter, r *ht
 func (clients *clientsContainer) handleFindClient(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	data := []map[string]*clientJSON{}
+	params := &client.FindParams{}
+	var err error
+
 	for i := range len(q) {
 		idStr := q.Get(fmt.Sprintf("ip%d", i))
 		if idStr == "" {
 			break
 		}
 
+		var cli *clientJSON
+
+		err = params.Set(idStr)
+		if err != nil {
+			cli = clients.clientJSONWithBlockedInfo(netip.Addr{}, idStr)
+		} else {
+			cli = clients.findClient(params)
+		}
+
 		data = append(data, map[string]*clientJSON{
-			idStr: clients.findClient(idStr),
+			idStr: cli,
 		})
 	}
 
 	aghhttp.WriteJSONResponseOK(w, r, data)
 }
 
-// findClient returns available information about a client by idStr from the
+// findClient returns available information about a client by params from the
 // client's storage or access settings.  cj is guaranteed to be non-nil.
-func (clients *clientsContainer) findClient(idStr string) (cj *clientJSON) {
-	params := &client.FindParams{}
-	err := params.Set(idStr)
-	if err != nil {
-		disallowed, rule := clients.clientChecker.IsBlockedClient(netip.Addr{}, idStr)
-		cj = &clientJSON{
-			IDs:            []string{idStr},
-			Disallowed:     &disallowed,
-			DisallowedRule: &rule,
-			WHOIS:          &whois.Info{},
-		}
-
-		return cj
-	}
-
+func (clients *clientsContainer) findClient(params *client.FindParams) (cj *clientJSON) {
 	c, ok := clients.storage.Find(params)
 	if !ok {
 		return clients.findRuntime(params)
+	}
+
+	idStr := string(params.ClientID)
+	if idStr == "" {
+		idStr = params.RemoteIP.String()
 	}
 
 	cj = clientToJSON(c)
@@ -485,7 +504,8 @@ type searchClientJSON struct {
 	ID string `json:"id"`
 }
 
-// handleSearchClient is the handler for the POST /control/clients/search HTTP API.
+// handleSearchClient is the handler for the POST /control/clients/search HTTP
+// API.
 func (clients *clientsContainer) handleSearchClient(w http.ResponseWriter, r *http.Request) {
 	q := searchQueryJSON{}
 	err := json.NewDecoder(r.Body).Decode(&q)
@@ -496,10 +516,22 @@ func (clients *clientsContainer) handleSearchClient(w http.ResponseWriter, r *ht
 	}
 
 	data := []map[string]*clientJSON{}
+	params := &client.FindParams{}
+
 	for _, c := range q.Clients {
 		idStr := c.ID
+
+		var cli *clientJSON
+
+		err = params.Set(idStr)
+		if err != nil {
+			cli = clients.clientJSONWithBlockedInfo(netip.Addr{}, idStr)
+		} else {
+			cli = clients.findClient(params)
+		}
+
 		data = append(data, map[string]*clientJSON{
-			idStr: clients.findClient(idStr),
+			idStr: cli,
 		})
 	}
 
@@ -513,8 +545,6 @@ func (clients *clientsContainer) findRuntime(params *client.FindParams) (cj *cli
 	ip := params.RemoteIP
 	idStr := string(params.ClientID)
 	if idStr == "" {
-		// TODO(s.chzhen):  Investigate whether the [BlockedClientChecker] can
-		// handle an empty ClientID.
 		idStr = ip.String()
 	}
 
@@ -525,15 +555,7 @@ func (clients *clientsContainer) findRuntime(params *client.FindParams) (cj *cli
 		// blocked IP list.
 		//
 		// See https://github.com/AdguardTeam/AdGuardHome/issues/2428.
-		disallowed, rule := clients.clientChecker.IsBlockedClient(ip, idStr)
-		cj = &clientJSON{
-			IDs:            []string{idStr},
-			Disallowed:     &disallowed,
-			DisallowedRule: &rule,
-			WHOIS:          &whois.Info{},
-		}
-
-		return cj
+		return clients.clientJSONWithBlockedInfo(ip, idStr)
 	}
 
 	_, host := rc.Info()
