@@ -2,6 +2,7 @@ package aghuser
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -16,7 +17,7 @@ import (
 )
 
 // SessionStorage is an interface that defines methods for handling web user
-// sessions.
+// sessions.  All methods must be safe for concurrent use.
 //
 // TODO(s.chzhen):  Add DeleteAll method.
 type SessionStorage interface {
@@ -40,6 +41,10 @@ type SessionStorage interface {
 // DefaultSessionStorageConfig represents the web user session storage
 // configuration structure.
 type DefaultSessionStorageConfig struct {
+	// Logger is used for logging the operation of the session storage.  It must
+	// not be nil.
+	Logger *slog.Logger
+
 	// Clock is used to get the current time.  It must not be nil.
 	Clock timeutil.Clock
 
@@ -47,13 +52,9 @@ type DefaultSessionStorageConfig struct {
 	// It must not be nil.
 	UserDB DB
 
-	// Logger is used for logging the operation of the session storage.  It must
-	// not be nil.
-	Logger *slog.Logger
-
-	// DBFilename is the path to the database file where session data is stored.
-	// It must not be empty.
-	DBFilename string
+	// DBPath is the path to the database file where session data is stored.  It
+	// must not be empty.
+	DBPath string
 
 	// SessionTTL is the default Time-To-Live duration for web user sessions.
 	// It specifies how long a session should last and is a required field.
@@ -61,23 +62,23 @@ type DefaultSessionStorageConfig struct {
 }
 
 // DefaultSessionStorage is the default bbolt database implementation of the
-// [SessionStorage] interface.  All methods must be safe for concurrent use.
+// [SessionStorage] interface.
 type DefaultSessionStorage struct {
+	// db is an instance of the bbolt database where web user sessions are
+	// stored by [SessionToken] in the [bucketNameSessions] bucket.
+	db *bbolt.DB
+
+	// logger is used for logging the operation of the session storage.
+	logger *slog.Logger
+
+	// mu protects sessions.
+	mu *sync.Mutex
+
 	// clock is used to get the current time.
 	clock timeutil.Clock
 
 	// userDB contains the web user information such as ID, login, and password.
 	userDB DB
-
-	// logger is used for logging the operation of the session storage.
-	logger *slog.Logger
-
-	// db is an instance of the bbolt database where web user sessions are
-	// stored by [SessionToken] in the [bucketNameSessions] bucket.
-	db *bbolt.DB
-
-	// mu protects sessions.
-	mu *sync.Mutex
 
 	// sessions maps a session token to a web user session.
 	sessions map[SessionToken]*Session
@@ -101,12 +102,15 @@ func NewDefaultSessionStorage(
 		sessionTTL: conf.SessionTTL,
 	}
 
-	dbFilename := conf.DBFilename
+	dbFilename := conf.DBPath
+	// TODO(s.chzhen):  Pass logger with options.
 	ds.db, err = bbolt.Open(dbFilename, aghos.DefaultPermFile, nil)
 	if err != nil {
 		ds.logger.ErrorContext(ctx, "opening db %q: %w", dbFilename, err)
 		if errors.Is(err, berrors.ErrInvalid) {
-			slogutil.PrintLines(ctx, ds.logger, slog.LevelError, "", "AdGuard Home cannot be initialized due to an incompatible file system.\nPlease read the explanation here: https://github.com/AdguardTeam/AdGuardHome/wiki/Getting-Started#limitations")
+			const s = `AdGuard Home cannot be initialized due to an incompatible file system.
+Please read the explanation here: https://github.com/AdguardTeam/AdGuardHome/wiki/Getting-Started#limitations`
+			slogutil.PrintLines(ctx, ds.logger, slog.LevelError, "", s)
 		}
 
 		return nil, err
@@ -119,10 +123,6 @@ func NewDefaultSessionStorage(
 
 	return ds, nil
 }
-
-// bucketNameSessions is the name of the bucket storing web user sessions in
-// the bbolt database.
-const bucketNameSessions = "sessions-2"
 
 // loadSessions loads web user sessions from the bbolt database.
 func (ds *DefaultSessionStorage) loadSessions(ctx context.Context) (err error) {
@@ -140,7 +140,7 @@ func (ds *DefaultSessionStorage) loadSessions(ctx context.Context) (err error) {
 		err = errors.Join(err, tx.Rollback())
 	}()
 
-	bkt := tx.Bucket([]byte(bucketNameSessions))
+	bkt := tx.Bucket([]byte(bboltBucketSessions))
 	if bkt == nil {
 		return nil
 	}
@@ -181,18 +181,17 @@ func (ds *DefaultSessionStorage) processSessions(
 	now := ds.clock.Now()
 	invalidSessions := [][]byte{}
 
-	err = bkt.ForEach(func(k, v []byte) error {
-		s := &Session{}
-
-		if !s.deserialize(v) || now.After(s.Expire) {
+	err = bkt.ForEach(func(k, v []byte) (txErr error) {
+		s, txErr := deserialize(v)
+		if txErr != nil || now.After(s.Expire) {
 			invalidSessions = append(invalidSessions, k)
 
-			return nil
+			return txErr
 		}
 
 		var u *User
-		u, err = ds.userDB.ByLogin(ctx, s.UserLogin)
-		if err != nil {
+		u, txErr = ds.userDB.ByLogin(ctx, s.UserLogin)
+		if txErr != nil {
 			invalidSessions = append(invalidSessions, k)
 
 			return nil
@@ -219,6 +218,63 @@ func (ds *DefaultSessionStorage) processSessions(
 	return len(invalidSessions), nil
 }
 
+// bboltBucketSessions is the name of the bucket storing web user sessions in
+// the bbolt database.
+const bboltBucketSessions = "sessions-2"
+
+const (
+	// bboltSessionExpireLen is the length of the expire field in the binary
+	// entry stored in bbolt.
+	bboltSessionExpireLen = 4
+
+	// bboltSessionNameLen is the length of the name field in the binary entry
+	// stored in bbolt.
+	bboltSessionNameLen = 2
+)
+
+// deserialize decodes a binary data into a session.
+//
+// TODO(s.chzhen): !! Improve naming.
+func deserialize(data []byte) (s *Session, err error) {
+	defer func() { err = errors.Annotate(err, "deserializing session: %w") }()
+
+	if len(data) < bboltSessionExpireLen+bboltSessionNameLen {
+		return nil, fmt.Errorf("length of the data is less than expected: got %d", len(data))
+	}
+
+	expireData := data[:bboltSessionExpireLen]
+	nameLenData := data[bboltSessionExpireLen : bboltSessionExpireLen+bboltSessionNameLen]
+	nameData := data[bboltSessionExpireLen+bboltSessionNameLen:]
+
+	nameLen := binary.BigEndian.Uint16(nameLenData)
+	if len(nameData) != int(nameLen) {
+		return nil, fmt.Errorf("login: expected length %d, got %d", nameLen, len(nameData))
+	}
+
+	expire := binary.BigEndian.Uint32(expireData)
+
+	return &Session{
+		Expire:    time.Unix(int64(expire), 0),
+		UserLogin: Login(nameData),
+	}, nil
+}
+
+// serialize encodes a session properties into a binary data.
+func serialize(s *Session) (data []byte) {
+	data = make([]byte, bboltSessionExpireLen+bboltSessionNameLen+len(s.UserLogin))
+
+	expireData := data[:bboltSessionExpireLen]
+	nameLenData := data[bboltSessionExpireLen : bboltSessionExpireLen+bboltSessionNameLen]
+	nameData := data[bboltSessionExpireLen+bboltSessionNameLen:]
+
+	expire := uint32(s.Expire.Unix())
+	binary.BigEndian.PutUint32(expireData, expire)
+	binary.BigEndian.PutUint16(nameLenData, uint16(len(s.UserLogin)))
+	copy(nameData, []byte(s.UserLogin))
+
+	return data
+}
+
 // type check
 var _ SessionStorage = (*DefaultSessionStorage)(nil)
 
@@ -236,6 +292,11 @@ func (ds *DefaultSessionStorage) New(ctx context.Context, u *User) (s *Session, 
 		return nil, fmt.Errorf("storing session: %w", err)
 	}
 
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	ds.sessions[s.Token] = s
+
 	return s, nil
 }
 
@@ -249,16 +310,16 @@ func (ds *DefaultSessionStorage) store(s *Session) (err error) {
 	needRollback := true
 	defer func() {
 		if needRollback {
-			err = errors.Join(err, tx.Rollback())
+			err = errors.WithDeferred(err, tx.Rollback())
 		}
 	}()
 
-	bkt, err := tx.CreateBucketIfNotExists([]byte(bucketNameSessions))
+	bkt, err := tx.CreateBucketIfNotExists([]byte(bboltBucketSessions))
 	if err != nil {
 		return fmt.Errorf("creating bucket: %w", err)
 	}
 
-	err = bkt.Put(s.Token[:], s.serialize())
+	err = bkt.Put(s.Token[:], serialize(s))
 	if err != nil {
 		return fmt.Errorf("putting data: %w", err)
 	}
@@ -278,11 +339,21 @@ func (ds *DefaultSessionStorage) FindByToken(ctx context.Context, t SessionToken
 	defer ds.mu.Unlock()
 
 	s, ok := ds.sessions[t]
-	if ok {
-		return s, nil
+	if !ok {
+		return nil, nil
 	}
 
-	return nil, nil
+	now := ds.clock.Now()
+	if now.After(s.Expire) {
+		err = ds.deleteByToken(ctx, t)
+		if err != nil {
+			return nil, fmt.Errorf("expired session: %w", err)
+		}
+
+		return nil, nil
+	}
+
+	return s, nil
 }
 
 // DeleteByToken implements the [SessionStorage] interface for
@@ -291,20 +362,27 @@ func (ds *DefaultSessionStorage) DeleteByToken(ctx context.Context, t SessionTok
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
-	delete(ds.sessions, t)
+	// Don't wrap the error because it's informative enough as is.
+	return ds.deleteByToken(ctx, t)
+}
 
-	err = ds.remove(ctx, t[:])
+// deleteByToken removes stored session by token.  ds.mu is expected to be
+// locked.
+func (ds *DefaultSessionStorage) deleteByToken(ctx context.Context, t SessionToken) (err error) {
+	err = ds.remove(ctx, t)
 	if err != nil {
 		ds.logger.ErrorContext(ctx, "deleting session", slogutil.KeyError, err)
 
 		return err
 	}
 
+	delete(ds.sessions, t)
+
 	return nil
 }
 
 // remove deletes a web user session from the bbolt database.
-func (ds *DefaultSessionStorage) remove(ctx context.Context, token []byte) (err error) {
+func (ds *DefaultSessionStorage) remove(ctx context.Context, t SessionToken) (err error) {
 	tx, err := ds.db.Begin(true)
 	if err != nil {
 		return fmt.Errorf("starting transaction: %w", err)
@@ -313,16 +391,16 @@ func (ds *DefaultSessionStorage) remove(ctx context.Context, token []byte) (err 
 	needRollback := true
 	defer func() {
 		if needRollback {
-			err = errors.Join(err, tx.Rollback())
+			err = errors.WithDeferred(err, tx.Rollback())
 		}
 	}()
 
-	bkt := tx.Bucket([]byte(bucketNameSessions))
+	bkt := tx.Bucket([]byte(bboltBucketSessions))
 	if bkt == nil {
 		return errors.Error("no bucket")
 	}
 
-	err = bkt.Delete(token)
+	err = bkt.Delete(t[:])
 	if err != nil {
 		return fmt.Errorf("removing data: %w", err)
 	}

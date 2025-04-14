@@ -60,12 +60,18 @@ func TestDefaultSessionStorage(t *testing.T) {
 		sessionSecond *aghuser.Session
 	)
 
+	defer func() {
+		require.NotNil(t, ds)
+
+		assert.NoError(t, ds.Close())
+	}()
+
 	require.True(t, t.Run("prepare_session_storage", func(t *testing.T) {
 		ds, err = aghuser.NewDefaultSessionStorage(ctx, &aghuser.DefaultSessionStorageConfig{
 			Clock:      clock,
 			UserDB:     userDB,
 			Logger:     logger,
-			DBFilename: dbFile.Name(),
+			DBPath:     dbFile.Name(),
 			SessionTTL: sessionTTL,
 		})
 		require.NoError(t, err)
@@ -101,12 +107,10 @@ func TestDefaultSessionStorage(t *testing.T) {
 			Clock:      clock,
 			UserDB:     userDB,
 			Logger:     logger,
-			DBFilename: dbFile.Name(),
+			DBPath:     dbFile.Name(),
 			SessionTTL: sessionTTL,
 		})
 		require.NoError(t, err)
-
-		testutil.CleanupAndRequireSuccess(t, ds.Close)
 
 		var got *aghuser.Session
 		got, err = ds.FindByToken(ctx, sessionFirst.Token)
@@ -116,6 +120,7 @@ func TestDefaultSessionStorage(t *testing.T) {
 
 		got, err = ds.FindByToken(ctx, sessionSecond.Token)
 		require.NoError(t, err)
+		require.NotNil(t, got)
 
 		assert.Equal(t, userLoginSecond, got.UserLogin)
 
@@ -123,6 +128,30 @@ func TestDefaultSessionStorage(t *testing.T) {
 		require.NoError(t, err)
 
 		got, err = ds.FindByToken(ctx, sessionSecond.Token)
+		require.NoError(t, err)
+
+		assert.Nil(t, got)
+	}))
+
+	require.True(t, t.Run("expired_session", func(t *testing.T) {
+		// TODO(s.chzhen): !! Add a helper.
+		sessionFirst, err = ds.New(ctx, &aghuser.User{
+			ID:    aghuser.MustNewUserID(),
+			Login: userLoginFirst,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, sessionFirst)
+
+		var got *aghuser.Session
+		got, err = ds.FindByToken(ctx, sessionFirst.Token)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+
+		assert.Equal(t, userLoginFirst, got.UserLogin)
+
+		date = date.Add(time.Hour)
+
+		got, err = ds.FindByToken(ctx, sessionFirst.Token)
 		require.NoError(t, err)
 
 		assert.Nil(t, got)
