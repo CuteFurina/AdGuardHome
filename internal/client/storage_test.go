@@ -1263,7 +1263,7 @@ func TestStorage_CustomUpstreamConfig(t *testing.T) {
 	})
 }
 
-func BenchmarkClearAndSet(b *testing.B) {
+func BenchmarkFindParams_Set(b *testing.B) {
 	const (
 		testIPStr    = "192.0.2.1"
 		testCIDRStr  = "192.0.2.0/24"
@@ -1332,14 +1332,14 @@ func BenchmarkClearAndSet(b *testing.B) {
 	//	goarch: amd64
 	//	pkg: github.com/AdguardTeam/AdGuardHome/internal/client
 	//	cpu: Intel(R) Core(TM) i7-10510U CPU @ 1.80GHz
-	//	BenchmarkClearAndSet/client_id-8         	49463488	        24.27 ns/op	       0 B/op	       0 allocs/op
-	//	BenchmarkClearAndSet/ip_address-8        	18740977	        62.22 ns/op	       0 B/op	       0 allocs/op
-	//	BenchmarkClearAndSet/subnet-8            	10848192	       110.0 ns/op	       0 B/op	       0 allocs/op
-	//	BenchmarkClearAndSet/mac_address-8       	 8148494	       133.2 ns/op	       8 B/op	       1 allocs/op
-	//	BenchmarkClearAndSet/bad_id-8            	73894278	        16.29 ns/op	       0 B/op	       0 allocs/op
+	//	BenchmarkFindParams_Set/client_id-8         	49463488	        24.27 ns/op	       0 B/op	       0 allocs/op
+	//	BenchmarkFindParams_Set/ip_address-8        	18740977	        62.22 ns/op	       0 B/op	       0 allocs/op
+	//	BenchmarkFindParams_Set/subnet-8            	10848192	       110.0 ns/op	       0 B/op	       0 allocs/op
+	//	BenchmarkFindParams_Set/mac_address-8       	 8148494	       133.2 ns/op	       8 B/op	       1 allocs/op
+	//	BenchmarkFindParams_Set/bad_id-8            	73894278	        16.29 ns/op	       0 B/op	       0 allocs/op
 }
 
-func BenchmarkFind(b *testing.B) {
+func BenchmarkStorage_Find(b *testing.B) {
 	const (
 		cliID  = "cid"
 		cliMAC = "02:00:00:00:00:00"
@@ -1436,8 +1436,8 @@ func BenchmarkFind(b *testing.B) {
 	//	goarch: amd64
 	//	pkg: github.com/AdguardTeam/AdGuardHome/internal/client
 	//	cpu: Intel(R) Core(TM) i7-10510U CPU @ 1.80GHz
-	//	BenchmarkFind/client_id-8         	 6945201	       157.4 ns/op	     240 B/op	       2 allocs/op
-	//	BenchmarkFind/ip_address-8        	 7000094	       165.3 ns/op	     248 B/op	       2 allocs/op
-	//	BenchmarkFind/subnet-8            	 6872064	       163.6 ns/op	     256 B/op	       2 allocs/op
-	//	BenchmarkFind/mac_address-8       	 5693320	       205.2 ns/op	     256 B/op	       3 allocs/op
+	//	BenchmarkStorage_Find/client_id-8         	 7070107	       154.4 ns/op	     240 B/op	       2 allocs/op
+	//	BenchmarkStorage_Find/ip_address-8        	 6831823	       168.6 ns/op	     248 B/op	       2 allocs/op
+	//	BenchmarkStorage_Find/subnet-8            	 7209050	       167.5 ns/op	     256 B/op	       2 allocs/op
+	//	BenchmarkStorage_Find/mac_address-8       	 5776131	       199.7 ns/op	     256 B/op	       3 allocs/op
 }

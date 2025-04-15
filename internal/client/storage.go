@@ -464,7 +464,7 @@ type FindParams struct {
 	UID UID
 }
 
-// ErrBadIdentifier is returned by [ClearAndSet] when it cannot parse the
+// ErrBadIdentifier is returned by [FindParams.Set] when it cannot parse the
 // provided client identifier.
 const ErrBadIdentifier errors.Error = "bad client identifier"
 
