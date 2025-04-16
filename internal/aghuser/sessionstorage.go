@@ -108,8 +108,8 @@ func NewDefaultSessionStorage(
 	if err != nil {
 		ds.logger.ErrorContext(ctx, "opening db %q: %w", dbFilename, err)
 		if errors.Is(err, berrors.ErrInvalid) {
-			const s = `AdGuard Home cannot be initialized due to an incompatible file system.
-Please read the explanation here: https://github.com/AdguardTeam/AdGuardHome/wiki/Getting-Started#limitations`
+			const s = "AdGuard Home cannot be initialized due to an incompatible file system.\n" +
+				"Please read the explanation here: https://adguard-dns.io/kb/adguard-home/getting-started/#limitations"
 			slogutil.PrintLines(ctx, ds.logger, slog.LevelError, "", s)
 		}
 
@@ -133,11 +133,9 @@ func (ds *DefaultSessionStorage) loadSessions(ctx context.Context) (err error) {
 
 	needRollback := true
 	defer func() {
-		if !needRollback {
-			return
+		if needRollback {
+			err = errors.WithDeferred(err, tx.Rollback())
 		}
-
-		err = errors.Join(err, tx.Rollback())
 	}()
 
 	bkt := tx.Bucket([]byte(bboltBucketSessions))
@@ -178,21 +176,61 @@ func (ds *DefaultSessionStorage) processSessions(
 	ctx context.Context,
 	bkt *bbolt.Bucket,
 ) (removed int, err error) {
-	now := ds.clock.Now()
 	invalidSessions := [][]byte{}
 
-	err = bkt.ForEach(func(k, v []byte) (txErr error) {
-		s, txErr := deserialize(v)
-		if txErr != nil || now.After(s.Expire) {
-			invalidSessions = append(invalidSessions, k)
+	err = bkt.ForEach(ds.bboltSessionHandler(ctx, &invalidSessions))
+	if err != nil {
+		return 0, fmt.Errorf("iterating over sessions: %w", err)
+	}
 
-			return txErr
+	var errs []error
+	for _, s := range invalidSessions {
+		if err = bkt.Delete(s); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	if err = errors.Join(errs...); err != nil {
+		return 0, fmt.Errorf("deleting sessions: %w", err)
+	}
+
+	return len(invalidSessions), nil
+}
+
+// bboltSessionHandler returns a function for [bbolt.Bucket.ForEach] that
+// iterates over stored sessions, deserializes them, and logs any errors
+// encountered.  The returned error is always nil, as these errors are
+// considered non-critical to stop the iteration process.
+func (ds *DefaultSessionStorage) bboltSessionHandler(
+	ctx context.Context,
+	invalidSessions *[][]byte,
+) (fn func(k, v []byte) (err error)) {
+	now := ds.clock.Now()
+
+	return func(k, v []byte) (err error) {
+		s, err := bboltDecode(v)
+		if err != nil {
+			*invalidSessions = append(*invalidSessions, k)
+			ds.logger.DebugContext(ctx, "deserializing session", slogutil.KeyError, err)
+
+			return nil
 		}
 
-		var u *User
-		u, txErr = ds.userDB.ByLogin(ctx, s.UserLogin)
-		if txErr != nil {
-			invalidSessions = append(invalidSessions, k)
+		if now.After(s.Expire) {
+			*invalidSessions = append(*invalidSessions, k)
+
+			return nil
+		}
+
+		u, err := ds.userDB.ByLogin(ctx, s.UserLogin)
+		if err != nil {
+			// Should not happen, as it currently always returns nil for error.
+			panic(err)
+		}
+
+		if u == nil {
+			ds.logger.DebugContext(ctx, "no saved user by name", "name", s.UserLogin)
+			*invalidSessions = append(*invalidSessions, k)
 
 			return nil
 		}
@@ -203,19 +241,7 @@ func (ds *DefaultSessionStorage) processSessions(
 		ds.sessions[t] = s
 
 		return nil
-	})
-	if err != nil {
-		// Don't wrap the error because it's informative enough as is.
-		return 0, err
 	}
-
-	for _, s := range invalidSessions {
-		if err = bkt.Delete(s); err != nil {
-			return 0, fmt.Errorf("deleting session: %w", err)
-		}
-	}
-
-	return len(invalidSessions), nil
 }
 
 // bboltBucketSessions is the name of the bucket storing web user sessions in
@@ -232,12 +258,8 @@ const (
 	bboltSessionNameLen = 2
 )
 
-// deserialize decodes a binary data into a session.
-//
-// TODO(s.chzhen): !! Improve naming.
-func deserialize(data []byte) (s *Session, err error) {
-	defer func() { err = errors.Annotate(err, "deserializing session: %w") }()
-
+// bboltDecode deserializes decodes a binary data into a session.
+func bboltDecode(data []byte) (s *Session, err error) {
 	if len(data) < bboltSessionExpireLen+bboltSessionNameLen {
 		return nil, fmt.Errorf("length of the data is less than expected: got %d", len(data))
 	}
@@ -259,8 +281,8 @@ func deserialize(data []byte) (s *Session, err error) {
 	}, nil
 }
 
-// serialize encodes a session properties into a binary data.
-func serialize(s *Session) (data []byte) {
+// bboltEncode serializes a session properties into a binary data.
+func bboltEncode(s *Session) (data []byte) {
 	data = make([]byte, bboltSessionExpireLen+bboltSessionNameLen+len(s.UserLogin))
 
 	expireData := data[:bboltSessionExpireLen]
@@ -319,7 +341,7 @@ func (ds *DefaultSessionStorage) store(s *Session) (err error) {
 		return fmt.Errorf("creating bucket: %w", err)
 	}
 
-	err = bkt.Put(s.Token[:], serialize(s))
+	err = bkt.Put(s.Token[:], bboltEncode(s))
 	if err != nil {
 		return fmt.Errorf("putting data: %w", err)
 	}

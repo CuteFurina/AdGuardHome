@@ -20,16 +20,21 @@ func TestDefaultSessionStorage(t *testing.T) {
 	)
 
 	var (
-		ctx        = testutil.ContextWithTimeout(t, testTimeout)
-		logger     = slogutil.NewDiscardLogger()
-		sessionTTL = time.Minute
+		ctx    = testutil.ContextWithTimeout(t, testTimeout)
+		logger = slogutil.NewDiscardLogger()
 	)
 
-	// Set up a mock clock to test expired sessions.
+	const (
+		sessionTTL = time.Minute
+		timeStep   = time.Second
+	)
+
+	// Set up a mock clock to test expired sessions. Each call to [clock.Now]
+	// will return the [date] incremented by [timeStep].
 	date := time.Now()
 	clock := &faketime.Clock{
 		OnNow: func() (now time.Time) {
-			date = date.Add(time.Second)
+			date = date.Add(timeStep)
 
 			return date
 		},
