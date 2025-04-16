@@ -28,6 +28,10 @@ type clientsContainer struct {
 	// filter.  It must not be nil.
 	baseLogger *slog.Logger
 
+	// logger is used for logging the operation of the client container.  It
+	// must not be nil.
+	logger *slog.Logger
+
 	// storage stores information about persistent clients.
 	storage *client.Storage
 
@@ -81,6 +85,7 @@ func (clients *clientsContainer) Init(
 	}
 
 	clients.baseLogger = baseLogger
+	clients.logger = baseLogger.With(slogutil.KeyPrefix, "client_container")
 	clients.safeSearchCacheSize = filteringConf.SafeSearchCacheSize
 	clients.safeSearchCacheTTL = time.Minute * time.Duration(filteringConf.CacheTime)
 
@@ -372,11 +377,7 @@ func (clients *clientsContainer) shouldCountClient(ids []string) (y bool) {
 		err := params.Set(id)
 		if err != nil {
 			// Should not happen.
-			clients.baseLogger.Warn(
-				"parsing find params",
-				slogutil.KeyPrefix, "client_container",
-				slogutil.KeyError, err,
-			)
+			clients.logger.Warn("parsing find params", slogutil.KeyError, err)
 
 			continue
 		}
