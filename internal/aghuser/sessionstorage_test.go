@@ -1,6 +1,7 @@
 package aghuser_test
 
 import (
+	"context"
 	"os"
 	"testing"
 	"time"
@@ -12,6 +13,33 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// addSession is a helper function that saves and returns a session for a newly
+// generated [aghuser.User] by login.
+func addSession(
+	tb testing.TB,
+	ctx context.Context,
+	ds aghuser.SessionStorage,
+	login aghuser.Login,
+) (s *aghuser.Session) {
+	tb.Helper()
+
+	s, err := ds.New(ctx, &aghuser.User{
+		ID:    aghuser.MustNewUserID(),
+		Login: login,
+	})
+	require.NoError(tb, err)
+	require.NotNil(tb, s)
+
+	var got *aghuser.Session
+	got, err = ds.FindByToken(ctx, s.Token)
+	require.NoError(tb, err)
+	require.NotNil(tb, got)
+
+	assert.Equal(tb, login, got.UserLogin)
+
+	return s
+}
 
 func TestDefaultSessionStorage(t *testing.T) {
 	const (
@@ -65,12 +93,6 @@ func TestDefaultSessionStorage(t *testing.T) {
 		sessionSecond *aghuser.Session
 	)
 
-	defer func() {
-		require.NotNil(t, ds)
-
-		assert.NoError(t, ds.Close())
-	}()
-
 	require.True(t, t.Run("prepare_session_storage", func(t *testing.T) {
 		ds, err = aghuser.NewDefaultSessionStorage(ctx, &aghuser.DefaultSessionStorageConfig{
 			Clock:      clock,
@@ -81,27 +103,13 @@ func TestDefaultSessionStorage(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		sessionFirst, err = ds.New(ctx, &aghuser.User{
-			ID:    aghuser.MustNewUserID(),
-			Login: userLoginFirst,
-		})
-		require.NoError(t, err)
-		require.NotNil(t, sessionFirst)
-
-		assert.Equal(t, userLoginFirst, sessionFirst.UserLogin)
+		sessionFirst = addSession(t, ctx, ds, userLoginFirst)
 
 		// Advance time to ensure the first session expires before creating the
 		// second session.
 		date = date.Add(time.Hour)
 
-		sessionSecond, err = ds.New(ctx, &aghuser.User{
-			ID:    aghuser.MustNewUserID(),
-			Login: userLoginSecond,
-		})
-		require.NoError(t, err)
-		require.NotNil(t, sessionSecond)
-
-		assert.Equal(t, userLoginSecond, sessionSecond.UserLogin)
+		sessionSecond = addSession(t, ctx, ds, userLoginSecond)
 
 		err = ds.Close()
 		require.NoError(t, err)
@@ -139,24 +147,13 @@ func TestDefaultSessionStorage(t *testing.T) {
 	}))
 
 	require.True(t, t.Run("expired_session", func(t *testing.T) {
-		// TODO(s.chzhen): !! Add a helper.
-		sessionFirst, err = ds.New(ctx, &aghuser.User{
-			ID:    aghuser.MustNewUserID(),
-			Login: userLoginFirst,
-		})
-		require.NoError(t, err)
-		require.NotNil(t, sessionFirst)
+		testutil.CleanupAndRequireSuccess(t, ds.Close)
 
-		var got *aghuser.Session
-		got, err = ds.FindByToken(ctx, sessionFirst.Token)
-		require.NoError(t, err)
-		require.NotNil(t, got)
-
-		assert.Equal(t, userLoginFirst, got.UserLogin)
+		sessionFirst = addSession(t, ctx, ds, userLoginFirst)
 
 		date = date.Add(time.Hour)
 
-		got, err = ds.FindByToken(ctx, sessionFirst.Token)
+		got, err := ds.FindByToken(ctx, sessionFirst.Token)
 		require.NoError(t, err)
 
 		assert.Nil(t, got)
