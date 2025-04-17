@@ -153,7 +153,8 @@ func TestDefaultSessionStorage(t *testing.T) {
 
 		date = date.Add(time.Hour)
 
-		got, err := ds.FindByToken(ctx, sessionFirst.Token)
+		var got *aghuser.Session
+		got, err = ds.FindByToken(ctx, sessionFirst.Token)
 		require.NoError(t, err)
 
 		assert.Nil(t, got)
