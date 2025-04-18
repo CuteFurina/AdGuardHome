@@ -229,8 +229,8 @@ func (ds *DefaultSessionStorage) bboltSessionHandler(
 		}
 
 		if u == nil {
-			ds.logger.DebugContext(ctx, "no saved user by name", "name", s.UserLogin)
 			*invalidSessions = append(*invalidSessions, k)
+			ds.logger.DebugContext(ctx, "no saved user by name", "name", s.UserLogin)
 
 			return nil
 		}
